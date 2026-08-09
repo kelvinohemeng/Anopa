@@ -1,8 +1,12 @@
 # Contributing to Anopa
 
-Thanks for considering a contribution! Anopa is free and open source (MIT) —
-there's no paid tier or gated functionality to worry about breaking. Every
-feature should stay available to every signed-in user.
+Thanks for considering a contribution! The Anopa plugin client in this
+repository is open source under MIT, and the product is free to use. There is
+no paid tier or gated functionality to preserve: every product feature should
+remain available to every signed-in user.
+
+The separately hosted Framer component project and managed production services
+are outside this repository's MIT-licensed scope.
 
 ## Development setup
 
