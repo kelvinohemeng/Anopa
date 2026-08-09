@@ -1,10 +1,14 @@
 # Anopa
 
-Anopa is a free, open-source Shopify integration and component ecosystem for
-Framer — connect a Shopify store, sync products into Framer's CMS, and drop
-in commerce components (cart, product cards, checkout) without leaving
-Framer's visual workflow. Every feature is available to every signed-in
-user — there are no paid tiers, license checks, or upgrade prompts.
+Anopa is a free Shopify integration and component ecosystem for Framer —
+connect a Shopify store, sync products into Framer's CMS, and add commerce
+components without leaving Framer's visual workflow. Every feature is
+available to every signed-in user — there are no paid tiers, license checks,
+or upgrade prompts.
+
+The **plugin client in this repository** is open source under the MIT License.
+The separately hosted Framer component library and managed production services
+are not included in this repository.
 
 - 🔌 **Install from the Framer Marketplace:** https://www.framer.com/community/marketplace/plugins/anopa/
 - 📖 **Documentation:** https://docs.thegeneralyst.com
@@ -30,20 +34,32 @@ user — there are no paid tiers, license checks, or upgrade prompts.
 - **Content:** [Sanity](https://www.sanity.io/) for the component catalogue and "What's new" posts
 - **Analytics (optional):** [PostHog](https://posthog.com/)
 
-## Architecture
+## Architecture and open-source scope
 
-This repository is the plugin *interface* — the panel UI, Shopify sync
+This repository contains the plugin interface: the panel UI, Shopify sync
 engine, component catalogue, and configuration workflows that run inside
-Framer. The commerce components referenced by the catalogue (cart, product
-card, checkout, etc.) are published Framer components inserted via
-`framer.addComponentInstance` using their Framer URLs; their implementation
-source lives in a separate Framer project, not in this repo.
+Framer.
+
+The commerce components referenced by the catalogue are published Framer
+components inserted through their Framer URLs. Their implementation source
+lives in a separate Framer project and is not included in, or licensed by,
+this repository. The hosted production backend and component catalogue used
+by the Marketplace version are also operated separately.
+
+| Part | Availability |
+| --- | --- |
+| Plugin client in this repository | Open source under MIT |
+| Framer component library | Available under its applicable Framer license |
+| Hosted production backend | Managed Anopa service |
+| Product features | Free for signed-in users |
 
 ## Getting started
 
-### 1. Install dependencies
+### 1. Clone and install
 
 ```bash
+git clone https://github.com/kelvinohemeng/Anopa.git
+cd Anopa
 npm install
 ```
 
@@ -115,4 +131,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+The source code contained in this repository is licensed under the
+[MIT License](LICENSE). This license does not apply to the separately hosted
+Framer component project, managed backend deployment, third-party services,
+or Framer's platform and Marketplace.
