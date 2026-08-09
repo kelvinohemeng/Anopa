@@ -5,7 +5,7 @@ import {
   useContext,
   useEffect,
 } from "react";
-import { useConvexAuth, useQuery, useConvex, useMutation } from "convex/react";
+import { useConvexAuth, useQuery, useConvex } from "convex/react";
 import { useAuthActions, useAuthToken } from "@convex-dev/auth/react";
 import { api } from "../../convex/_generated/api";
 import { useLocation } from "wouter";
@@ -89,7 +89,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useConvexAuth();
   const { signIn, signOut: convexSignOut } = useAuthActions();
   const accessToken = useAuthToken();
-  const applyMigration = useMutation(api.migration.applyForCurrentUser);
 
   // Reactive query — auto-updates whenever the user document changes
   const rawAppUser = useQuery(
@@ -229,16 +228,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     posthog.reset();
     navigate("/login");
   };
-
-  // Apply a pending pre-Convex migration once — fires when the user is first
-  // authenticated and their profile is loaded but has no Shopify data yet.
-  useEffect(() => {
-    if (!isAuthenticated || !appUser) return;
-    if (appUser.shopify_domain || appUser.shopify_storefront_token) return;
-    applyMigration({}).catch((e) =>
-      console.warn("[Migration] applyForCurrentUser failed:", e),
-    );
-  }, [isAuthenticated, appUser?.id]);
 
   // With Convex reactive queries, data auto-refreshes. Expose as a no-op
   // for callers (e.g. focus-based refresh in ConfigurationMode).

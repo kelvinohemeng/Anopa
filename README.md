@@ -103,19 +103,6 @@ npm run dev
 Framer will detect the local dev server; open the plugin from inside a Framer
 project to load it.
 
-## Migrating existing users from another backend
-
-`convex/migration.ts` provides a one-time bridge for carrying over existing
-users' Shopify credentials from a prior backend. It never contains real user
-data in source control — pass your export as a runtime argument:
-
-```bash
-npx convex run migration:seed '{"users":[{"email":"a@b.com","shopify_domain":"...","shopify_storefront_token":"..."}]}'
-```
-
-`applyForCurrentUser` runs automatically on login and is a no-op once a user
-has no pending migration row, so it's safe to leave wired up permanently.
-
 ## Scripts
 
 | Command         | Description                                                 |

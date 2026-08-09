@@ -45,7 +45,3 @@ mcp_config.json
 
 # Personal/local tool state — not meant to be shared
 .claude/settings.local.json
-
-# Any local export used with `npx convex run migration:seed` — never commit
-# real user data. See convex/migration.ts for usage.
-migration-seed*.json

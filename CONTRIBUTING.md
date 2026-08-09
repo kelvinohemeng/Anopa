@@ -36,9 +36,6 @@ details, including optional Google OAuth, Sanity, and PostHog configuration.
   it as, an Anopa-side paid checkout.
 - Never commit `.env`, `.env.local`, real Convex deployment credentials, real
   Shopify store credentials, or any file containing real user data.
-  `convex/migration.ts` must never contain hardcoded user data — real
-  migration data is always passed as a runtime argument (see the file's
-  header comment), never as a source-code constant.
 
 ## Reporting issues
 
