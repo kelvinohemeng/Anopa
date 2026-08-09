@@ -1,0 +1,210 @@
+/* Your Plugin CSS */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap");
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #f5f5f5;
+  --color-text: #333;
+  --color-brand-primary: #8d5ff6;
+  --color-secondary: #6c757d;
+}
+
+@layer utilities {
+  .scrollbar-hidden::-webkit-scrollbar {
+    display: none; /* Chrome, Safari, Opera */
+  }
+  .scrollbar-hidden {
+    -ms-overflow-style: none; /* IE and Edge */
+    scrollbar-width: none; /* Firefox */
+  }
+}
+
+main {
+  display: flex;
+  flex-direction: column;
+  align-items: start;
+  padding: 0 15px 15px 15px;
+  height: 100%;
+  gap: 15px;
+}
+button {
+  width: unset !important;
+  /* height: unset !important; */
+  border-radius: 6px;
+  cursor: pointer;
+  padding: 8px 8px !important;
+  font-size: 12px !important;
+  font-weight: 500;
+  transition: background 0.2s ease;
+}
+main .container {
+  width: 100%;
+  margin: 0 auto;
+  padding-inline: 8px;
+}
+
+input,
+button,
+select,
+textarea {
+  width: 100%;
+  height: fit-content !important;
+  font-size: 12px !important;
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+
+.plugin-container input,
+.plugin-container button,
+.plugin-container select,
+.plugin-container textarea {
+  width: 100%;
+  height: auto;
+  font-size: 14px;
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+
+/* Global Framer Plugin CSS */
+
+/* Reset */
+
+/* Reset */
+
+:root {
+  --framer-font-family:
+    "Inter", system-ui, Avenir, Helvetica, Arial, sans-serif;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+}
+
+body,
+html,
+#root {
+  height: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+body {
+  font-family: var(--framer-font-family);
+  font-size: 12px;
+  line-height: 1.5;
+  font-weight: 500;
+
+  color: var(--framer-color-text, #333);
+  background: var(--framer-color-bg, #fff);
+  color-scheme: light dark;
+
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+img,
+picture,
+video,
+canvas,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+p,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  overflow-wrap: break-word;
+}
+
+p {
+  color: var(--framer-color-text-secondary);
+}
+
+a {
+  text-decoration: none;
+  color: var(--framer-color-tint, #09f);
+}
+
+.framer-color-text {
+  color: var(--framer-color-text);
+}
+.framer-color-text-reversed {
+  color: var(--framer-color-text-reversed);
+}
+.framer-color-text-secondary {
+  color: var(--framer-color-text-secondary);
+}
+.framer-color-text-tertiary {
+  color: var(--framer-color-text-tertiary);
+}
+
+.framer-color-tint {
+  color: var(--framer-color-tint);
+}
+.framer-color-tint-dimmed {
+  color: var(--framer-color-tint-dimmed);
+}
+.framer-color-tint-dark {
+  color: var(--framer-color-tint-dark);
+}
+
+.framer-color-bg {
+  background-color: var(--framer-color-bg);
+}
+.framer-icon-black svg {
+  fill: var(--framer-color-text-secondary) !important;
+}
+
+.framer-color-bg-secondary {
+  background-color: var(--framer-color-bg-secondary);
+}
+
+.framer-color-bg-tertiary {
+  background-color: var(--framer-color-bg-tertiary);
+}
+[data-framer-theme="light"] .framer-color-bg-tertiary {
+  background-color: #555555;
+}
+
+hr {
+  color: var(--framer-color-divider);
+}
+
+.ap-logo {
+  width: 250px;
+  height: 80px;
+  background-image: url("/logo_white.png");
+  background-size: contain;
+  background-repeat: no-repeat;
+}
+
+[data-framer-theme="light"] .ap-logo {
+  width: 250px;
+  height: 80px;
+  background-image: url("/logo_black.png");
+  background-size: contain;
+  background-repeat: no-repeat;
+}
+
+.page-nav {
+  border-radius: 6px;
+  background: transparent;
+  transition: background 0.2s ease;
+}
+
+.page-nav:hover {
+  background: var(--framer-color-bg-secondary) !important;
+}
