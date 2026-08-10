@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
-import { framer } from "framer-plugin";
+import { framer, useIsAllowedTo } from "framer-plugin";
 import { client } from "../SanityStuff/sanityClient";
 
 const PLUGIN_DATA_KEY = "whatsNewDismissed";
@@ -30,6 +30,7 @@ async function fetchWhatsNew(): Promise<WhatsNewData | null> {
 }
 
 export default function WhatsNewPage() {
+  const isAllowedToSetPluginData = useIsAllowedTo("setPluginData");
   const [, navigate] = useLocation();
   const [data, setData] = useState<WhatsNewData | null>(null);
   const [currentSlide, setCurrentSlide] = useState(0);
@@ -45,12 +46,15 @@ export default function WhatsNewPage() {
       })
       .catch((err) => console.warn("WhatsNewPage: failed to load", err));
 
-    // Dismiss on unmount — covers back button navigation
+    // Dismiss on unmount — covers back button navigation. This just marks the
+    // "what's new" banner as seen, so skip silently (no framer.notify) if the
+    // permission isn't available rather than surfacing an error for it.
     return () => {
-      if (versionRef.current) {
-        framer.setPluginData(PLUGIN_DATA_KEY, versionRef.current);
+      if (versionRef.current && isAllowedToSetPluginData) {
+        framer.setPluginData(PLUGIN_DATA_KEY, versionRef.current).catch(() => {});
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fire-once-on-mount effect; permission is re-read via closure, not re-triggering the fetch above (see comment)
   }, []);
 
   const prev = () =>

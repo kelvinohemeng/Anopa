@@ -4,6 +4,11 @@ import { useLocation } from "wouter";
 import { BackButton } from "../components/BackButton";
 import { client, urlFor } from "../SanityStuff/sanityClient";
 
+type SanityImageValue = {
+  asset: { _ref: string };
+  alt?: string;
+};
+
 type SanityTemplateDoc = {
   _id: string;
   title?: string;
@@ -12,17 +17,17 @@ type SanityTemplateDoc = {
   description?: string;
   previewUrl?: string;
   templateUrl?: string;
-  mainImage?: any;
-  gallery?: Array<{ image?: any; caption?: string }>;
+  body?: unknown;
+  mainImage?: SanityImageValue;
+  gallery?: Array<{ image?: SanityImageValue; caption?: string }>;
   templateCategory?: string[];
   publishedAt?: string;
-  [key: string]: any;
 };
 
 type UITemplate = {
   key: string;
   title: string;
-  body?: any;
+  body?: unknown;
   description?: string;
   previewUrl: string;
   templateUrl: string;
@@ -148,9 +153,13 @@ export default function TemplatesPage() {
         );
 
         if (mounted) setTemplates(mapped);
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error("[TemplatesPage] fetch error:", err);
-        if (mounted) setError(err?.message || "Failed to load templates");
+        if (mounted) {
+          setError(
+            err instanceof Error ? err.message : "Failed to load templates",
+          );
+        }
       } finally {
         if (mounted) setLoading(false);
       }

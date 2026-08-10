@@ -1,8 +1,8 @@
-import { PortableText } from "@portabletext/react";
+import { PortableText, type PortableTextProps } from "@portabletext/react";
 import { urlFor } from "./sanityClient";
 
 interface Props {
-  value: any;
+  value: PortableTextProps["value"];
 }
 
 export default function PortableTextRenderer({ value }: Props) {

@@ -1,8 +1,19 @@
 // ConfigurationMode.tsx
-import { framer, type ManagedCollectionFieldInput } from "framer-plugin";
+import {
+  framer,
+  type ManagedCollectionFieldInput,
+} from "framer-plugin";
 import React, { useEffect, useState } from "react";
 import { usePermissions } from "../components/PermissionContext";
-import { useAuth } from "../components/AuthContext";
+import {
+  hasStoreCredentials,
+  type StoreConfig,
+  updateStoreConfig,
+  useStoreConfig,
+} from "../config/storeConfig";
+import {
+  configureCollectionAndSync,
+} from "../utils/syncProducts";
 
 // top of file, near helpers
 const DEFAULT_ALLOWED_FILE_TYPES = ["png", "jpg", "jpeg", "webp", "pdf"];
@@ -25,7 +36,7 @@ export type FieldInputT = {
 };
 
 // Utility function to construct a field input
-export function createFieldInput({
+function createFieldInput({
   id,
   name,
   type,
@@ -180,7 +191,7 @@ function validateCustomFields(fields: FieldInputT[]): string | null {
 
 type SafeLabels = Partial<Record<FieldType, string>> & Record<string, string>;
 
-export const labelByFieldTypeOption: SafeLabels = {
+const labelByFieldTypeOption: SafeLabels = {
   string: "Text",
   number: "Number",
   image: "Image",
@@ -798,16 +809,7 @@ function ConfigTabNav({
 // ── Main component ───────────────────────────────────────────────────────────
 
 export default function ConfigurationMode() {
-  const { appUser, refreshAppUser } = useAuth();
-
-  // Auto-refresh user status when plugin is focused
-  useEffect(() => {
-    const handleFocus = () => {
-      refreshAppUser();
-    };
-    window.addEventListener("focus", handleFocus);
-    return () => window.removeEventListener("focus", handleFocus);
-  }, [refreshAppUser]);
+  const { config } = useStoreConfig();
 
   const [activeTab, setActiveTab] = useState<ActiveTab>("shopify");
 
@@ -846,7 +848,12 @@ export default function ConfigurationMode() {
     return () => clearTimeout(timer);
   }, []);
 
-  const { canConfigure } = usePermissions();
+  const {
+    canConfigure,
+    canSync,
+    loading: permissionsLoading,
+    getPermissionTitle,
+  } = usePermissions();
 
   const [selectedFields, setSelectedFields] = useState<string[]>(
     standardFields.filter((field) => field.default).map((f) => f.id),
@@ -921,6 +928,24 @@ export default function ConfigurationMode() {
 
   const handleCreateCollection = async () => {
     setSyncError(null);
+    if (permissionsLoading) {
+      setSyncError("Permissions are still being checked. Please try again.");
+      return;
+    }
+    if (!canConfigure || !canSync) {
+      const message =
+        "Missing permissions to configure and sync this collection.";
+      setSyncError(message);
+      framer.notify(message, { variant: "error" });
+      return;
+    }
+    if (!hasStoreCredentials(config)) {
+      const message =
+        "Set up your Shopify domain and public Storefront API token in Manage before syncing.";
+      setSyncError(message);
+      framer.notify(message, { variant: "warning" });
+      return;
+    }
     setSyncStatus("Creating collection...");
     setSyncing(true);
 
@@ -973,6 +998,25 @@ export default function ConfigurationMode() {
 
       const customFieldsNormalized = normalizeCustomFields(customFields);
 
+      const supportedMetafieldTypes = new Set([
+        "string",
+        "number",
+        "boolean",
+        "date",
+        "color",
+        "formattedText",
+        "link",
+        "image",
+      ]);
+      const unsupportedMetafield = metafields.find(
+        (field) => !supportedMetafieldTypes.has(field.type),
+      );
+      if (unsupportedMetafield) {
+        throw new Error(
+          `Metafield ${unsupportedMetafield.namespace}.${unsupportedMetafield.key} uses unsupported CMS type "${unsupportedMetafield.type}".`,
+        );
+      }
+
       const customValidationError = validateCustomFields(
         customFieldsNormalized,
       );
@@ -1017,25 +1061,20 @@ export default function ConfigurationMode() {
         ...editableCustomFields,
         ...editableMetafields,
       ];
-      setSyncStatus("Updating collection fields...");
-      await collection.setFields(allFields);
-
-      await framer.setPluginData("customFields", JSON.stringify(customFields));
-      await framer.setPluginData(
-        "selectedFields",
-        JSON.stringify(selectedFields),
-      );
-      await framer.setPluginData("metafields", JSON.stringify(metafields));
-      await framer.setPluginData(
-        "syncImageAsGallery",
-        JSON.stringify(syncImageAsGallery),
-      );
-
-      setSyncStatus("Syncing products...");
-      const { syncProductsCore } = await import("../utils/syncProducts");
-
-      setSyncStatus("Syncing products...");
-      const syncedCount = await syncProductsCore(appUser, collection, true);
+      const candidateConfig: StoreConfig = {
+        ...config,
+        customFields,
+        metafields,
+        syncImageAsGallery,
+      };
+      setSyncStatus("Preparing products...");
+      const syncedCount = await configureCollectionAndSync({
+        candidateConfig,
+        selectedFields,
+        allFields,
+        collection,
+        canSync,
+      });
 
       setSyncStatus(`✅ Synced ${syncedCount} products successfully!`);
 
@@ -1044,9 +1083,11 @@ export default function ConfigurationMode() {
       });
 
       framer.closePlugin("Sync complete", { variant: "success" });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("[Sync] FAILED at step — error:", error);
-      setSyncError(error.message || "Failed to create collection.");
+      setSyncError(
+        error instanceof Error ? error.message : "Failed to create collection.",
+      );
       setSyncStatus(null);
       try {
         framer.notify("❌ Failed to create collection.", { variant: "error" });
@@ -1060,10 +1101,12 @@ export default function ConfigurationMode() {
 
   const handleReset = async () => {
     try {
-      await framer.setPluginData("customFields", null);
       await framer.setPluginData("selectedFields", null);
-      await framer.setPluginData("metafields", null);
-      await framer.setPluginData("syncImageAsGallery", null);
+      updateStoreConfig({
+        customFields: [],
+        metafields: [],
+        syncImageAsGallery: false,
+      });
       setCustomFields([]);
       setSelectedFields(
         standardFields.filter((f) => f.default).map((f) => f.id),
@@ -1089,16 +1132,12 @@ export default function ConfigurationMode() {
       if (!canConfigure) return;
 
       try {
-        const custom = await framer.getPluginData("customFields");
         const selected = await framer.getPluginData("selectedFields");
-        const metas = await framer.getPluginData("metafields");
-        const galleryMode = await framer.getPluginData("syncImageAsGallery");
-
-        if (custom) {
-          const parsed = JSON.parse(custom);
-          // console.log("🔁 Loaded Custom Fields:", parsed);
-          setCustomFields(parsed);
-        }
+        setCustomFields(
+          (config?.customFields as FieldInputT[] | undefined) ?? [],
+        );
+        setMetafields(config?.metafields ?? []);
+        setSyncImageAsGallery(config?.syncImageAsGallery ?? false);
 
         if (selected) {
           const parsed = JSON.parse(selected);
@@ -1106,17 +1145,6 @@ export default function ConfigurationMode() {
           setSelectedFields(parsed);
         }
 
-        if (metas) {
-          const parsed = JSON.parse(metas);
-          // console.log("🔁 Loaded Metafields:", parsed);
-          setMetafields(parsed);
-        }
-
-        if (galleryMode) {
-          const parsed = JSON.parse(galleryMode);
-          // console.log("🔁 Loaded Gallery Mode:", parsed);
-          setSyncImageAsGallery(parsed);
-        }
       } catch (e) {
         console.error("❌ Failed to load plugin settings", e);
       }
@@ -1137,7 +1165,7 @@ export default function ConfigurationMode() {
     };
 
     waitForFramerReady();
-  }, [canConfigure]);
+  }, [canConfigure, config]);
 
   return (
     <div className=" h-[100%] !w-full ">
@@ -1213,15 +1241,29 @@ export default function ConfigurationMode() {
             <div className="flex gap-2 w-full framer-color-bg">
               <button
                 onClick={handleReset}
+                disabled={permissionsLoading || !canConfigure}
+                title={
+                  permissionsLoading
+                    ? "Checking permissions"
+                    : getPermissionTitle(canConfigure)
+                }
                 className="flex-1 framer-button-secondary "
               >
                 Reset Fields
               </button>
               <button
                 onClick={handleCreateCollection}
+                disabled={
+                  syncing || permissionsLoading || !canConfigure || !canSync
+                }
+                title={
+                  permissionsLoading
+                    ? "Checking permissions"
+                    : getPermissionTitle(canConfigure && canSync)
+                }
                 className="flex-1 bg-brand-primary text-white"
               >
-                Sync Products
+                {permissionsLoading ? "Checking Permissions..." : "Sync Products"}
               </button>
             </div>
           </div>

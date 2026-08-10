@@ -1,12 +1,31 @@
 import { fetchShopifyData } from "./shopifyStorefront";
 import { ShopifyProduct } from "./types";
+import { areValidStoreMetafields, type StoreMetafield } from "../config/storeConfig";
 
-const buildGetProductsQuery = (
-  metafields: { namespace: string; key: string }[] = []
+type ProductsConnection = {
+  edges: Array<{ node: ShopifyProduct }>;
+  pageInfo: {
+    hasNextPage: boolean;
+    endCursor: string | null;
+  };
+};
+
+type GetProductsResponse = {
+  products?: ProductsConnection;
+};
+
+export const buildGetProductsQuery = (
+  metafields: Pick<StoreMetafield, "namespace" | "key" | "type">[] = [],
 ) => {
+  if (!areValidStoreMetafields(metafields)) {
+    throw new Error("Invalid metafield configuration.");
+  }
+  const metafieldVariableDefinitions = metafields
+    .map((_, i) => `, $metafieldNamespace${i}: String!, $metafieldKey${i}: String!`)
+    .join("");
   const metafieldsQuery = metafields
     .map(
-      (m, i) => `metafield_${i}: metafield(namespace: "${m.namespace}", key: "${m.key}") {
+      (_, i) => `metafield_${i}: metafield(namespace: $metafieldNamespace${i}, key: $metafieldKey${i}) {
         value
         type
       }`
@@ -14,7 +33,7 @@ const buildGetProductsQuery = (
     .join("\n");
 
   return `
-  query getProducts($first: Int!, $after: String) {
+  query getProducts($first: Int!, $after: String${metafieldVariableDefinitions}) {
     products(first: $first, after: $after) {
       pageInfo {
         hasNextPage
@@ -118,7 +137,7 @@ export async function getProducts({
   storeDomain: string | undefined;
   accessToken: string | undefined;
   limit?: number;
-  metafields?: { namespace: string; key: string }[];
+  metafields?: StoreMetafield[];
 }): Promise<ShopifyProduct[]> {
   const allProducts: ShopifyProduct[] = [];
   let hasNextPage = true;
@@ -126,21 +145,29 @@ export async function getProducts({
   
   // Build the query once with the provided metafields
   const query = buildGetProductsQuery(metafields);
+  const metafieldVariables = Object.fromEntries(
+    metafields.flatMap((metafield, index) => [
+      [`metafieldNamespace${index}`, metafield.namespace],
+      [`metafieldKey${index}`, metafield.key],
+    ]),
+  );
 
   while (hasNextPage && allProducts.length < limit) {
     // console.log(`🔁 Fetching page — after: ${after}`);
 
-    const data = await fetchShopifyData({
+    const data: GetProductsResponse =
+      await fetchShopifyData<GetProductsResponse>({
       query,
       variables: {
         first: Math.min(25, limit - allProducts.length),
         after,
+        ...metafieldVariables,
       },
       storeDomain,
       accessToken,
-    });
+      });
 
-    const products = data.products;
+    const products: ProductsConnection | undefined = data.products;
 
     if (!products) {
        console.error("No products returned from Shopify");
@@ -151,7 +178,7 @@ export async function getProducts({
     // console.log(`🔚 hasNextPage: ${products.pageInfo.hasNextPage}`);
     // console.log(`➡️ endCursor: ${products.pageInfo.endCursor}`);
 
-    allProducts.push(...products.edges.map((e: any) => e.node));
+    allProducts.push(...products.edges.map((edge) => edge.node));
     hasNextPage = products.pageInfo.hasNextPage;
     after = products.pageInfo.endCursor;
   }

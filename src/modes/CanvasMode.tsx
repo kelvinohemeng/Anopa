@@ -1,36 +1,42 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useLocation } from "wouter";
 import { routes } from "../Router/routes";
-
-// Paths handled outside CanvasMode (Router.tsx or App.tsx level)
-const EXCLUDED_PATHS = new Set(["/login", "/signup", "/forgot-password", "/my-account"]);
-
-// Group routes by their root path segment so sub-routes share one animation key.
-// e.g. /components, /components/products, /components/cart → all keyed as "/components"
-const canvasRouteGroups = (() => {
-  const seen = new Map<string, (typeof routes)[number]["Component"]>();
-  for (const route of routes) {
-    if (EXCLUDED_PATHS.has(route.path)) continue;
-    const first = route.path.split("/")[1]; // "" for "/", "components" for "/components/..."
-    const rootPath = first ? `/${first}` : "/";
-    if (!seen.has(rootPath)) seen.set(rootPath, route.Component);
-  }
-  return [...seen.entries()];
-})();
-
-const NON_HOME_ROOTS = canvasRouteGroups
-  .map(([p]) => p)
-  .filter((p) => p !== "/");
-
-const pageMotion = {
-  initial: { opacity: 0, x: 20 },
-  animate: { opacity: 1, x: 0 },
-  exit: { opacity: 0, x: -20 },
-  transition: { duration: 0.2 },
-};
+import { useEffect } from "react";
+import { framer } from "framer-plugin";
 
 export default function CanvasMode() {
+  // Group routes by their root path segment so sub-routes share one animation key.
+  // e.g. /components, /components/products, /components/cart → all keyed as "/components"
+  const canvasRouteGroups = (() => {
+    const seen = new Map<string, (typeof routes)[number]["Component"]>();
+    for (const route of routes) {
+      const first = route.path.split("/")[1]; // "" for "/", "components" for "/components/..."
+      const rootPath = first ? `/${first}` : "/";
+      if (!seen.has(rootPath)) seen.set(rootPath, route.Component);
+    }
+    return [...seen.entries()];
+  })();
+
+  const NON_HOME_ROOTS = canvasRouteGroups
+    .map(([p]) => p)
+    .filter((p) => p !== "/");
+
+  const pageMotion = {
+    initial: { opacity: 0, x: 20 },
+    animate: { opacity: 1, x: 0 },
+    exit: { opacity: 0, x: -20 },
+    transition: { duration: 0.2 },
+  };
+
   const [location] = useLocation();
+  useEffect(() => {
+    const currentRoute = routes.find((route) => route.path === location);
+    framer.showUI({
+      width: currentRoute?.size?.width ?? 350,
+      height: currentRoute?.size?.height ?? 500,
+      resizable: false,
+    });
+  }, [location]);
 
   const isActive = (rootPath: string) =>
     rootPath === "/"

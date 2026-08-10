@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { Draggable, framer } from "framer-plugin";
+import { Draggable, framer, useIsAllowedTo } from "framer-plugin";
 import { useLocation } from "wouter";
 import Nav from "../components/ComponentNav";
 import { BackButton } from "../components/BackButton";
-import { useAuth } from "../components/AuthContext";
 import { client, urlFor } from "../SanityStuff/sanityClient";
+import { ANOPA_CONFIG_COMPONENT_KEY, hasStoreCredentials, useStoreConfig } from "../config/storeConfig";
 
 interface SanityComponentDoc {
   _id: string;
@@ -13,12 +13,11 @@ interface SanityComponentDoc {
   isPublished?: boolean;
   description?: string;
   componentUrl?: string;
-  mainImage?: any;
+  mainImage?: Parameters<typeof urlFor>[0];
   imageUrl?: string;
   componentCategory?: string[];
   publishedAt?: string;
   status?: "none" | "new" | "deprecated";
-  [key: string]: any;
 }
 
 interface UIComponent {
@@ -50,13 +49,13 @@ async function loadTemplate(): Promise<SanityComponentDoc[]> {
 }
 
 export default function ComponentsPage() {
+  const isAllowedToAdd = useIsAllowedTo("addComponentInstance");
   const [location] = useLocation();
   const [searchQuery, setSearchQuery] = useState("");
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [components, setComponents] = useState<UIComponent[]>([]);
-  const { appUser } = useAuth();
 
   const categoryFromPath = location.split("/")[2] || "product";
 
@@ -106,8 +105,7 @@ export default function ComponentsPage() {
           if (doc.mainImage) {
             try {
               image = urlFor(doc.mainImage).width(800).url();
-            } catch (err) {
-              // console.warn("[map] urlFor failed", err);
+            } catch {
               image = "";
             }
           } else if (doc.imageUrl) {
@@ -143,9 +141,9 @@ export default function ComponentsPage() {
 
         // console.log("[ComponentsPage] mapped components:", mapped);
         setComponents(mapped.sort((a, b) => a.title.localeCompare(b.title)));
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error("[ComponentsPage] fetch/mapping error:", err);
-        setError(err?.message || "Unknown error");
+        setError(err instanceof Error ? err.message : "Unknown error");
       } finally {
         if (mounted) setLoading(false);
       }
@@ -154,7 +152,7 @@ export default function ComponentsPage() {
     return () => {
       mounted = false;
     };
-  }, [appUser]);
+  }, []);
 
   // dev toggle: set to true to bypass category filtering
   const showAll = false;
@@ -162,20 +160,14 @@ export default function ComponentsPage() {
   // helper: safe normalize
   const norm = (s?: string) => (s || "").toString().trim().toLowerCase();
 
-  const filtered = components.filter((c: any) => {
+  const filtered = components.filter((c) => {
     if (showAll) return true;
 
     const pathCat = norm(categoryFromPath); // from URL
     if (!pathCat || pathCat === "all") return true;
 
     // collect component categories into a normalized array
-    const compCats = (
-      (c.categories && Array.isArray(c.categories)
-        ? c.categories
-        : [c.category]) || []
-    )
-      .map((x: any) => norm(typeof x === "string" ? x : x?.title || "")) // support string or object with title
-      .filter(Boolean);
+    const compCats = [norm(c.category)].filter(Boolean);
 
     // if no compCats, fallback to component.category
     if (compCats.length === 0) compCats.push(norm(c.category));
@@ -272,8 +264,10 @@ export default function ComponentsPage() {
             url={component.url}
             image={component.image}
             componentKey={component.key}
+            title={component.title}
             published={component.published}
             status={component.status}
+            isAllowedToAdd={isAllowedToAdd}
           />
         ))}
 
@@ -290,10 +284,12 @@ export default function ComponentsPage() {
 interface Props {
   url: string;
   image: string;
-  attributes?: Record<string, any>;
+  attributes?: Record<string, unknown>;
   componentKey?: string;
   published?: boolean;
   status?: "none" | "new" | "deprecated";
+  title?: string;
+  isAllowedToAdd: boolean;
 }
 
 export const ComponentInsert = ({
@@ -303,16 +299,21 @@ export const ComponentInsert = ({
   componentKey,
   published,
   status,
+  title = "component",
+  isAllowedToAdd,
 }: Props) => {
-  const { appUser } = useAuth();
+  const { config } = useStoreConfig();
 
   // Auto-populate attributes for the Shopify Context Config component.
-  // Every authenticated user gets full access — no tier/lock checks here.
+  // Every local user gets full access — no tier or account checks here.
   const getAttributes = () => {
-    if (componentKey === "c4bbe3e3-47c8-4ae4-aa9f-81476067b70a" && appUser) {
+    if (
+      componentKey === ANOPA_CONFIG_COMPONENT_KEY &&
+      hasStoreCredentials(config)
+    ) {
       return {
-        domain: appUser.shopify_domain || "",
-        token: appUser.shopify_storefront_token || "",
+        domain: config.domain,
+        token: config.publicStorefrontToken,
         premiumStatus: true,
       };
     }
@@ -320,21 +321,54 @@ export const ComponentInsert = ({
   };
 
   const finalAttributes = getAttributes();
+  const canInsert = !!published && isAllowedToAdd;
+  const insertComponent = async () => {
+    if (!published) return;
+    if (!isAllowedToAdd) {
+      framer.notify(
+        "You don't have permission to add components to this project.",
+        { variant: "error" },
+      );
+      return;
+    }
+    try {
+      await framer.addComponentInstance({
+        url,
+        attributes: { controls: finalAttributes },
+      });
+      if (componentKey === ANOPA_CONFIG_COMPONENT_KEY && !hasStoreCredentials(config)) {
+        framer.notify("Component added without store details. Open Manage to set up Shopify, then update the config component.", { variant: "warning" });
+      } else {
+        framer.notify(`${title} added`, { variant: "success" });
+      }
+    } catch {
+      framer.notify(`Could not add ${title}. Please try again.`, { variant: "error" });
+    }
+  };
 
   return (
     <div
       className={
         "w-full !p-0 m-0 !bg-transparent !rounded-lg cursor-pointer transform hover:!transition-transform duration-300 hover:!ease-out hover:-translate-y-1 select-none" +
-        (!published ? " opacity-20 " : "")
+        (!canInsert ? " opacity-20 " : "")
       }
-      onClick={() => {
-        if (published) {
-          framer.addComponentInstance({
-            url,
-            attributes: { controls: finalAttributes },
-          });
+      onClick={() => void insertComponent()}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          void insertComponent();
         }
       }}
+      role="button"
+      tabIndex={canInsert ? 0 : -1}
+      aria-label={
+        canInsert
+          ? `Add ${title}`
+          : !published
+            ? `${title} is unavailable`
+            : `You don't have permission to add ${title}`
+      }
+      aria-disabled={!canInsert}
     >
       <div className="relative">
         {status && status !== "none" && (
@@ -348,7 +382,7 @@ export const ComponentInsert = ({
             {status}
           </div>
         )}
-        {published ? (
+        {canInsert ? (
           <Draggable
             data={{
               type: "componentInstance",
@@ -356,12 +390,19 @@ export const ComponentInsert = ({
               url,
               attributes: { controls: finalAttributes },
             }}
+            onDragComplete={(result) => {
+              if (result.status === "error") {
+                framer.notify(`Could not add ${title}. Please try again.`, {
+                  variant: "error",
+                });
+              }
+            }}
           >
             <img
               src={image}
               draggable={false}
               className="!w-full !h-auto object-cover rounded-md"
-              alt=""
+              alt={`Preview of ${title}`}
             />
           </Draggable>
         ) : (
@@ -369,7 +410,7 @@ export const ComponentInsert = ({
             src={image}
             draggable={false}
             className="!w-full !h-auto object-cover rounded-md"
-            alt={!published ? "(Not published)" : ""}
+            alt={`${title} is not published`}
           />
         )}
       </div>

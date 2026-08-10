@@ -1,17 +1,20 @@
 import { framer, useIsAllowedTo } from "framer-plugin";
-import { useState, useEffect, useRef } from "react";
-import { useMutation } from "convex/react";
-import { api } from "../../convex/_generated/api";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
-import { useAuth } from "../components/AuthContext";
 import { BackButton } from "../components/BackButton";
+import {
+  clearStoreConfig,
+  hasStoreCredentials,
+  isAnopaConfigComponent,
+  isPublicStorefrontToken,
+  normalizeShopifyDomain,
+  saveStoreConfig,
+  useStoreConfig,
+} from "../config/storeConfig";
 
 export default function StoreDetailsForm() {
   const [, navigate] = useLocation();
-  const { appUser, refreshAppUser } = useAuth();
-
-  const updateStore = useMutation(api.users.updateStore);
-  const disconnectStore = useMutation(api.users.disconnectStore);
+  const { config, refresh } = useStoreConfig();
 
   const [storeUrl, setStoreUrl] = useState("");
   const [storeToken, setStoreToken] = useState("");
@@ -22,22 +25,33 @@ export default function StoreDetailsForm() {
   const isAllowedToSetAttributes = useIsAllowedTo("setAttributes");
 
   useEffect(() => {
-    framer.getNodesWithType("ComponentInstanceNode").then((nodes) => {
-      const found = nodes.some(
-        (n) => "domain" in n.controls && "token" in n.controls,
-      );
-      setConfigOnCanvas(found);
-    });
+    framer
+      .getNodesWithType("ComponentInstanceNode")
+      .then((nodes) => {
+        const found = nodes.some(isAnopaConfigComponent);
+        setConfigOnCanvas(found);
+      })
+      .catch(() => setConfigOnCanvas(false));
   }, []);
 
+  useEffect(() => {
+    setStoreUrl(config?.domain ?? "");
+    setStoreToken(config?.publicStorefrontToken ?? "");
+  }, [config]);
+
   const handleSyncConfig = async () => {
-    if (!appUser || !isAllowedToSetAttributes) return;
+    if (!hasStoreCredentials(config)) {
+      framer.notify(
+        "Set up your Shopify store before updating the config component.",
+        { variant: "warning" },
+      );
+      return;
+    }
+    if (!isAllowedToSetAttributes) return;
     setSyncing(true);
     try {
       const nodes = await framer.getNodesWithType("ComponentInstanceNode");
-      const targets = nodes.filter(
-        (n) => "domain" in n.controls && "token" in n.controls,
-      );
+      const targets = nodes.filter(isAnopaConfigComponent);
 
       if (targets.length === 0) {
         framer.notify("No Shopify Config component found on canvas.", {
@@ -50,8 +64,8 @@ export default function StoreDetailsForm() {
         targets.map((node) =>
           node.setAttributes({
             controls: {
-              domain: appUser.shopify_domain ?? "",
-              token: appUser.shopify_storefront_token ?? "",
+              domain: config.domain,
+              token: config.publicStorefrontToken,
               // Every user has full access — no premium tier to gate on.
               premiumStatus: true,
             },
@@ -71,28 +85,29 @@ export default function StoreDetailsForm() {
     }
   };
 
-  // Track initialization to prevent overwriting user input during auto-save
-  const initialized = useRef(false);
-
-  // Initialize form with appUser data only once
-  useEffect(() => {
-    if (appUser && !initialized.current) {
-      setStoreUrl(appUser.shopify_domain ?? "");
-      setStoreToken(appUser.shopify_storefront_token ?? "");
-      initialized.current = true;
-    }
-  }, [appUser]);
-
   const handleSave = async (navigateOnSuccess: boolean = false) => {
     setLoading(true);
 
     try {
-      await updateStore({
-        shopify_domain: storeUrl,
-        shopify_storefront_token: storeToken,
+      const domain = normalizeShopifyDomain(storeUrl);
+      const publicStorefrontToken = storeToken.trim();
+      if (!domain || !isPublicStorefrontToken(publicStorefrontToken)) {
+        framer.notify(
+          "Enter a valid myshopify.com domain and public Storefront API token. Admin and private tokens are not accepted.",
+          { variant: "error" },
+        );
+        return;
+      }
+      saveStoreConfig({
+        version: 1,
+        domain,
+        publicStorefrontToken,
+        customFields: config?.customFields ?? [],
+        metafields: config?.metafields ?? [],
+        syncImageAsGallery: config?.syncImageAsGallery ?? false,
       });
-
-      refreshAppUser();
+      refresh();
+      setStoreUrl(domain);
       setSuccess(true);
 
       if (navigateOnSuccess) {
@@ -104,57 +119,55 @@ export default function StoreDetailsForm() {
       } else {
         setTimeout(() => setSuccess(false), 2000);
       }
-    } catch (error) {
-      console.error("Failed to save store info:", error);
+    } catch {
       framer.notify("Failed to save store info.", { variant: "error" });
     } finally {
       setLoading(false);
     }
   };
 
-  // Debounced auto-save
-  useEffect(() => {
-    if (!initialized.current) return;
-
-    const savedUrl = appUser?.shopify_domain ?? "";
-    const savedToken = appUser?.shopify_storefront_token ?? "";
-
-    if (storeUrl === savedUrl && storeToken === savedToken) return;
-
-    const timer = setTimeout(() => {
-      handleSave(false);
-    }, 1000);
-
-    return () => clearTimeout(timer);
-  }, [storeUrl, storeToken, appUser]);
-
   const handleDisconnect = async () => {
     setLoading(true);
     try {
-      await disconnectStore();
-      refreshAppUser();
+      const nodes = await framer.getNodesWithType("ComponentInstanceNode");
+      const targets = nodes.filter(isAnopaConfigComponent);
+      if (targets.length > 0 && !isAllowedToSetAttributes) {
+        framer.notify(
+          "Framer did not allow canvas changes. Local store details were kept so you can retry disconnecting.",
+          { variant: "error" },
+        );
+        return;
+      }
 
+      const results = await Promise.allSettled(
+        targets.map((node) =>
+          node.setAttributes({
+            controls: { domain: "", token: "", premiumStatus: true },
+          }),
+        ),
+      );
+      const clearedCount = results.filter(
+        (result) => result.status === "fulfilled",
+      ).length;
+      if (clearedCount !== targets.length) {
+        framer.notify(
+          `Cleared ${clearedCount} of ${targets.length} canvas config components. Local store details were kept so you can retry.`,
+          { variant: "error" },
+        );
+        return;
+      }
+
+      clearStoreConfig();
+      refresh();
       setStoreUrl("");
       setStoreToken("");
 
-      if (isAllowedToSetAttributes) {
-        const nodes = await framer.getNodesWithType("ComponentInstanceNode");
-        const targets = nodes.filter(
-          (n) => "domain" in n.controls && "token" in n.controls,
-        );
-        await Promise.all(
-          targets.map((node) =>
-            node.setAttributes({
-              controls: { domain: "", token: "", premiumStatus: true },
-            }),
-          ),
-        );
-      }
-
       framer.notify("Store disconnected", { variant: "success" });
-    } catch (error) {
-      console.error("Disconnect error:", error);
-      framer.notify("Failed to disconnect", { variant: "error" });
+    } catch {
+      framer.notify(
+        "Canvas credentials may be cleared, but local store details could not be cleared. Please retry.",
+        { variant: "error" },
+      );
     } finally {
       setLoading(false);
     }
@@ -171,7 +184,7 @@ export default function StoreDetailsForm() {
       <hr />
       <div className=" flex flex-col gap-6 space-y-3">
         <div className="!space-y-4">
-          {appUser?.shopify_domain && appUser?.shopify_storefront_token ? (
+          {hasStoreCredentials(config) ? (
             <div className="flex items-center justify-between p-3">
               <div className="flex items-center gap-2">
                 <div className="relative !w-[10px] !h-[10px] aspect-square rounded-full">
@@ -187,7 +200,8 @@ export default function StoreDetailsForm() {
             <div className="flex flex-col gap-1">
               <h2 className="text-md font-bold">Connect Shopify</h2>
               <p className="text-xs text-gray-500">
-                Enter your Storefront API details below.
+                Enter your public Storefront API details below. They stay in
+                this plugin's local iframe storage.
               </p>
             </div>
           )}
@@ -196,26 +210,34 @@ export default function StoreDetailsForm() {
           <div className="flex flex-col gap-4 w-full">
             <label className="flex flex-col gap-2">
               <span className="framer-color-text-secondary">
-                Storefront URL:
+                Shopify store domain
               </span>
               <input
-                type="url"
+                type="text"
+                inputMode="url"
                 value={storeUrl}
                 onChange={(e) => setStoreUrl(e.target.value)}
                 className="w-full"
-                placeholder="https://your-store.myshopify.com"
+                placeholder="your-store.myshopify.com"
+                required
               />
             </label>
             <label className="flex flex-col gap-2">
               <span className="framer-color-text-secondary">
-                Storefront Token:
+                Public Storefront API token
               </span>
               <input
-                type="text"
+                type="password"
                 value={storeToken}
                 onChange={(e) => setStoreToken(e.target.value)}
                 className="w-full"
+                autoComplete="off"
+                required
               />
+              <span className="text-[10px] text-amber-600">
+                Use only a public Storefront API token. Never paste an Admin API
+                token or another private credential here.
+              </span>
             </label>
           </div>
           <div className="flex flex-col w-full gap-2">
@@ -226,7 +248,7 @@ export default function StoreDetailsForm() {
             >
               {loading
                 ? "Saving..."
-                : appUser?.shopify_domain
+                : config?.domain
                   ? "Update Store Info"
                   : "Save Store Info"}
             </button>

@@ -6,20 +6,17 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "typecheck": "tsc --noEmit",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "pack": "npx framer-plugin-tools@latest pack"
   },
   "dependencies": {
-    "@convex-dev/auth": "^0.0.92",
     "@portabletext/react": "^5.0.0",
-    "@posthog/react": "^1.7.1",
     "@sanity/client": "^7.12.0",
     "@sanity/image-url": "^1.2.0",
-    "convex": "^1.38.0",
     "framer-motion": "^12.19.2",
     "framer-plugin": "^3",
-    "posthog-js": "^1.347.2",
     "react": "^18",
     "react-dom": "^18",
     "vite-plugin-mkcert": "^1",

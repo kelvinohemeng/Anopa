@@ -5,11 +5,15 @@ import {
   SYNC_PERMISSIONS,
   usePermissions,
 } from "../components/PermissionContext";
-import { useAuth } from "../components/AuthContext";
 import { syncProductsCore } from "../utils/syncProducts";
+import {
+  hasStoreCredentials,
+  type StoreConfig,
+  useStoreConfig,
+} from "../config/storeConfig";
 
 export default function SyncMode() {
-  const { appUser, loading: authLoading, isAuthenticated } = useAuth();
+  const { config } = useStoreConfig();
 
   const { canSync, loading: permissionsLoading } = usePermissions();
   const [status, setStatus] = useState("Syncing products...");
@@ -23,15 +27,20 @@ export default function SyncMode() {
   });
 
   useEffect(() => {
-    if (authLoading || permissionsLoading) {
+    if (permissionsLoading) {
       setStatus("Initializing...");
       return;
     }
 
-    if (!isAuthenticated) {
-      setError("❌ No Shopify credentials found. Please log in.");
-      setStatus("❌ Missing authentication.");
-      framer.notify("❌ You must be logged in.");
+    if (!hasStoreCredentials(config)) {
+      setError(
+        "Set up your Shopify domain and public Storefront API token in Manage before syncing.",
+      );
+      setStatus("Shopify setup required");
+      framer.notify(
+        "Shopify setup required. Open Manage to add your store details.",
+        { variant: "warning" },
+      );
       return;
     }
 
@@ -59,7 +68,7 @@ export default function SyncMode() {
         }
 
         const syncedCount = await syncProductsCore(
-          appUser,
+          config,
           collection,
           canSync,
         );
@@ -71,7 +80,7 @@ export default function SyncMode() {
           framer.closePlugin("Sync complete", { variant: "success" });
         }, 1500);
       } catch (err) {
-        console.error("Sync error:", err);
+        console.error("Product sync failed");
         setError(err instanceof Error ? err.message : String(err));
         setStatus("❌ Sync failed");
         framer.notify("❌ Sync error");
@@ -79,7 +88,7 @@ export default function SyncMode() {
     };
 
     syncProducts();
-  }, [authLoading, appUser, canSync, permissionsLoading]);
+  }, [config, canSync, permissionsLoading]);
 
   return (
     <div className="absolute top-0 left-0 right-0 h-full !w-full flex items-center justify-center p-4 text-center">
@@ -159,56 +168,84 @@ function getSeoDescription(product: ShopifyProduct): string {
   return product.seo?.description?.trim() || product.description?.trim() || "";
 }
 
+// Tested conversion helper intentionally shares the component module.
+// eslint-disable-next-line react-refresh/only-export-components
+export function convertConfiguredMetafieldValue(
+  configuredType: string,
+  rawValue: unknown,
+): ManagedCollectionItemInput["fieldData"][string] | null {
+  if (rawValue === null || rawValue === undefined) return null;
+
+  switch (configuredType) {
+    case "string":
+    case "formattedText":
+    case "color":
+    case "link":
+      return { type: configuredType, value: String(rawValue) };
+    case "number": {
+      const value =
+        typeof rawValue === "number" ? rawValue : Number(String(rawValue));
+      return Number.isFinite(value) ? { type: "number", value } : null;
+    }
+    case "boolean": {
+      if (rawValue === true || rawValue === "true" || rawValue === "1") {
+        return { type: "boolean", value: true };
+      }
+      if (rawValue === false || rawValue === "false" || rawValue === "0") {
+        return { type: "boolean", value: false };
+      }
+      return null;
+    }
+    case "date": {
+      const value = String(rawValue);
+      return Number.isNaN(Date.parse(value)) ? null : { type: "date", value };
+    }
+    case "image": {
+      const value = String(rawValue);
+      try {
+        const url = new URL(value);
+        return url.protocol === "http:" || url.protocol === "https:"
+          ? { type: "image", value }
+          : null;
+      } catch {
+        return null;
+      }
+    }
+    default:
+      return null;
+  }
+}
+
+function hasMetafieldValue(value: unknown): value is { value: unknown } {
+  return typeof value === "object" && value !== null && "value" in value;
+}
+
+// Shared by the sync orchestrator and its focused mapping tests.
+// eslint-disable-next-line react-refresh/only-export-components
 export async function mapShopifyToCollectionItems(
   products: ShopifyProduct[],
+  config: StoreConfig,
+  selectedFields: string[],
 ): Promise<ManagedCollectionItemInput[]> {
-  const selectedFieldsRaw = await framer.getPluginData("selectedFields");
-  const selectedFields: string[] = selectedFieldsRaw
-    ? JSON.parse(selectedFieldsRaw)
-    : [];
-
-  const galleryMode = await framer.getPluginData("syncImageAsGallery");
-  const syncAsGallery = galleryMode === "true";
-
-  const metafieldsRaw = await framer.getPluginData("metafields");
-  const metafields: { namespace: string; key: string }[] = metafieldsRaw
-    ? JSON.parse(metafieldsRaw)
-    : [];
+  const syncAsGallery = config.syncImageAsGallery;
+  const metafields = config.metafields;
 
   return products.map((product) => {
     const variantString = formatVariantsField(product);
-    const fieldData: Record<string, any> = {};
+    const fieldData: ManagedCollectionItemInput["fieldData"] = {};
+    const dynamicProductFields = product as unknown as Record<string, unknown>;
 
     // Map Metafields
     metafields.forEach((m, i) => {
-      // @ts-ignore - dynamic property exists from query builder
-      const mf = product[`metafield_${i}`];
-      if (mf) {
+      const mf = dynamicProductFields[`metafield_${i}`];
+      if (hasMetafieldValue(mf)) {
         const fieldId = `${m.namespace}_${m.key}`; // Must match ID generation in ConfigurationMode
-
-        if (
-          mf.type === "file_reference" ||
-          mf.type.startsWith("list.file_reference")
-        ) {
-          // Handle file references if needed
-          // For now assume string/number/color/etc
-        }
-
-        fieldData[fieldId] = {
-          type: "string", // fallback, should match configured type in real implementation better
-          value: String(mf.value),
-        };
-
-        // Basic type mapping improvement
-        if (mf.type === "number_integer" || mf.type === "number_decimal") {
-          fieldData[fieldId] = { type: "number", value: Number(mf.value) };
-        } else if (mf.type === "boolean") {
-          fieldData[fieldId] = { type: "boolean", value: mf.value === "true" };
-        } else if (mf.type === "color") {
-          fieldData[fieldId] = { type: "color", value: mf.value };
-        } else if (mf.type === "date" || mf.type === "date_time") {
-          fieldData[fieldId] = { type: "date", value: mf.value };
-        }
+        const converted = convertConfiguredMetafieldValue(m.type, mf.value);
+        if (converted) fieldData[fieldId] = converted;
+        else
+          console.warn(
+            `Skipping unsupported or invalid metafield ${m.namespace}.${m.key} for CMS type ${m.type}`,
+          );
       }
     });
 
@@ -248,7 +285,7 @@ export async function mapShopifyToCollectionItems(
           const images: { url: string; altText: string }[] = [];
 
           const gallery = product.images?.edges ?? [];
-          for (let i = 0; i < 7; i++) {
+          for (let i = 0; i < 8; i++) {
             const img = gallery[i]?.node.url ?? "";
             const altText = gallery[i]?.node.altText ?? product.title;
             if (img) images.push({ url: img, altText });

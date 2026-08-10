@@ -1,8 +1,8 @@
-import { useAuth } from "../components/AuthContext";
 import { useLocation } from "wouter";
 import { framer, useIsAllowedTo } from "framer-plugin";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { client } from "../SanityStuff/sanityClient";
+import { hasStoreCredentials, useStoreConfig } from "../config/storeConfig";
 
 const pages = [
   { id: "/components", label: "Components" }, // Fixed typo in "Components"
@@ -14,26 +14,10 @@ const pages = [
 export default function HomePage() {
   const isAllowedToAddComponent = useIsAllowedTo("addComponentInstance");
   const [, navigate] = useLocation();
-  const { user, appUser, isAuthenticated, signOut } = useAuth();
-
-  const [framerUser, setFramerUser] = useState<any>(null);
-
-  // Get framer user safely
-  useEffect(() => {
-    const getFramerUser = async () => {
-      try {
-        const user = await framer.getCurrentUser();
-        setFramerUser(user);
-      } catch (error) {
-        console.warn("Could not get framer user:", error);
-      }
-    };
-    getFramerUser();
-  }, []);
+  const { config } = useStoreConfig();
 
   // Navigate to What's New page if a new version exists
   useEffect(() => {
-    if (!isAuthenticated) return;
     (async () => {
       try {
         const [whatsNew, dismissed] = await Promise.all([
@@ -49,7 +33,7 @@ export default function HomePage() {
         // ignore
       }
     })();
-  }, [isAuthenticated]);
+  }, [navigate]);
 
   return (
     <div className="flex flex-col gap-3 !min-h-full">
@@ -69,8 +53,7 @@ export default function HomePage() {
                     <div className="absolute inset-0 w-[105%] h-[105%] bg-green-200 rounded-full animate-ping"></div>
                   </div>
                   <p className="font-medium text-[14px]">
-                    {appUser?.shopify_domain &&
-                    appUser?.shopify_storefront_token
+                    {hasStoreCredentials(config)
                       ? "Store Connected"
                       : "Connect Your Store"}
                   </p>
@@ -158,69 +141,6 @@ export default function HomePage() {
           <p>You don't have permission to add components to this project.</p>
         </div>
       )}
-
-      <hr />
-
-      {/* Authentication Section */}
-      <div>
-        {!isAuthenticated ? (
-          <div className="flex gap-2 w-full">
-            <button
-              onClick={() => navigate("/signup")}
-              className="w-full framer-button-primary"
-            >
-              Signup
-            </button>
-            <button onClick={() => navigate("/login")} className="w-full">
-              Log in
-            </button>
-          </div>
-        ) : (
-          <div className=" flex flex-col gap-2">
-            <div className="flex gap-4 items-center !p-2 framer-color-bg-secondary rounded-xl">
-              <div className="flex gap-2 w-full items-center">
-                <div className="w-[40px] h-[40px] aspect-square rounded-md overflow-hidden">
-                  <div className="w-full h-full grid place-items-center bg-brand-primary">
-                    {user?.user_metadata?.picture || framerUser ? (
-                      <img
-                        src={
-                          user?.user_metadata?.picture ?? framerUser.avatarUrl
-                        }
-                        className="w-full h-full object-cover"
-                        alt={user?.user_metadata?.full_name || "User"}
-                      />
-                    ) : (
-                      <p className="capitalize font-medium  !text-white">
-                        {user?.email?.charAt(0) ||
-                          user?.user_metadata?.email?.charAt(0) ||
-                          "?"}
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <div className="flex flex-col">
-                  <p className="font-bold text-[16px]">
-                    {user?.user_metadata?.full_name ?? framerUser?.name}
-                  </p>
-                  <p className=" text-[10px]">{user?.email}</p>
-                </div>
-              </div>
-              <button
-                className="!text-[12px] shadow-lg !bg-red-500"
-                onClick={() => signOut()}
-              >
-                <p className="!text-white !text-[10px]">Sign out</p>
-              </button>
-            </div>
-            <button
-              className=" !w-full !p-1 !px-2 !text-[12px]  framer-button-secondary hover:!bg-brand-primary/80 !h-fit hover:!text-white"
-              onClick={() => navigate("/my-account")}
-            >
-              My Account
-            </button>
-          </div>
-        )}
-      </div>
     </div>
   );
 }
