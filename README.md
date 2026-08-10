@@ -7,7 +7,7 @@ components without creating or signing in to an Anopa account.
 - **Install from the Framer Marketplace:** https://www.framer.com/community/marketplace/plugins/anopa/
 - **Documentation:** https://docs.thegeneralyst.com
 - **Video overview:** https://www.youtube.com/watch?v=Ug3CrpsolQ0
-- **Client license:** [MIT](LICENSE)
+- **Client license:** [PolyForm Shield 1.0.0](LICENSE) — source-available, not for competing products
 
 ## What Anopa does
 
@@ -24,13 +24,15 @@ mode, an unconfigured installation goes directly to **Manage**.
 
 ## Licensing boundary
 
-The client code in this repository is licensed under MIT. That license covers
-the plugin panel, Shopify sync logic, catalogue UI, and local configuration
-workflow in this repository.
+The client code in this repository is licensed under the [PolyForm Shield
+License 1.0.0](LICENSE). It's source-available: you can read it, run it,
+fork it, and build on it for any purpose that doesn't compete with Anopa or
+another product built on this code. It covers the plugin panel, Shopify sync
+logic, catalogue UI, and local configuration workflow in this repository.
 
 The published Framer commerce components inserted by the plugin are external
 assets whose implementation source lives in a separate Framer project. They
-are **not** licensed by this repository's MIT license. Review the license or
+are **not** licensed by this repository's license. Review the license or
 terms supplied with those components before redistributing or modifying them.
 
 ## Store configuration and privacy
@@ -68,26 +70,6 @@ for server secrets.
 Anopa collects no analytics or telemetry. Nothing is sent to a third party
 beyond the direct calls needed to talk to Shopify and to the plugin's own
 Sanity content backend.
-
-## Upgrading from an account-based release
-
-The anonymous client does not copy credentials from the former account
-backend into browser storage. Existing users must open **Manage** once
-after upgrading and re-enter their Shopify domain and public Storefront token.
-Custom field and metafield choices should also be reviewed before the first
-sync. In canvas mode, users without local credentials are sent to **Manage**
-automatically. Do not ask users to provide an Admin/private token during this
-transition.
-
-For a production rollout, retain the last account-based build and its backend
-unchanged for a **30-day rollback window beginning on the anonymous release
-date**. Record the exact start and end dates in the release notes. During that
-window the old deployment is rollback-only; do not write its credentials into
-the new client's `localStorage`. After the window closes and support confirms
-the anonymous release is stable, retire the authentication/Convex services and
-handle retained user data according to the published privacy and retention
-policy. A rollback restores the old build and backend together; it does not
-make locally saved anonymous configuration available to the old build.
 
 ## Local development
 
@@ -149,5 +131,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-The repository client is MIT-licensed; see [LICENSE](LICENSE). External Framer
-components have separate licensing as described above.
+The repository client is licensed under the PolyForm Shield License 1.0.0;
+see [LICENSE](LICENSE). External Framer components have separate licensing
+as described above.

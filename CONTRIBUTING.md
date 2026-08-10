@@ -46,7 +46,7 @@ variables; they are bundled into browser code.
 - Do not reintroduce login, signup, Google OAuth, account/profile screens,
   Convex runtime dependencies, tier checks, or license gating.
 - Run `npm run lint` and `npm run build` before opening a pull request.
-- Keep the MIT client/external-component boundary clear. Published Framer
+- Keep the client/external-component license boundary clear. Published Framer
   commerce components come from another project and are not relicensed by this
   repository.
 - If the local configuration shape changes, add validation and document the
