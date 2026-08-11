@@ -223,6 +223,41 @@ export async function prepareProductSync(
   return { config, mapped };
 }
 
+// A read-only categorization of what a sync WOULD do, computed before any
+// mutation. Safe to compute repeatedly and safe to discard without effect.
+export type SyncPlan = {
+  prepared: PreparedProductSync;
+  existingIds: string[];
+  toAddIds: string[];
+  toUpdateIds: string[];
+  toRemoveIds: string[];
+};
+
+type ManagedCollectionPlanTarget = Pick<ManagedCollection, "getItemIds">;
+
+// Read-only: diffs the already-fetched/mapped Shopify products against the
+// collection's current item ids. Performs no addItems/removeItems/
+// setPluginData calls, so it is safe to call before the user has confirmed
+// anything.
+export async function computeSyncPlan(
+  prepared: PreparedProductSync,
+  collection: ManagedCollectionPlanTarget,
+): Promise<SyncPlan> {
+  const existingIds = await collection.getItemIds();
+  const existingIdSet = new Set(existingIds);
+  const targetIds = new Set(prepared.mapped.map((item) => item.id));
+
+  const toAddIds: string[] = [];
+  const toUpdateIds: string[] = [];
+  for (const item of prepared.mapped) {
+    (existingIdSet.has(item.id) ? toUpdateIds : toAddIds).push(item.id);
+  }
+
+  const toRemoveIds = existingIds.filter((id) => !targetIds.has(id));
+
+  return { prepared, existingIds, toAddIds, toUpdateIds, toRemoveIds };
+}
+
 export async function syncPreparedProductsCore(
   prepared: PreparedProductSync,
   collection: ManagedCollectionSyncTarget,

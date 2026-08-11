@@ -1,8 +1,17 @@
-import { framer, ManagedCollectionItemInput } from "framer-plugin";
+import {
+  framer,
+  type ManagedCollection,
+  ManagedCollectionItemInput,
+} from "framer-plugin";
 import { useEffect, useRef, useState } from "react";
 import { ShopifyProduct } from "../utils/types";
 import { usePermissions } from "../components/PermissionContext";
-import { syncProductsCore } from "../utils/syncProducts";
+import {
+  computeSyncPlan,
+  prepareProductSync,
+  syncPreparedProductsCore,
+  type SyncPlan,
+} from "../utils/syncProducts";
 import StoreDetailsForm from "../pages/StoreDetailsForm";
 import {
   hasStoreCredentials,
@@ -10,13 +19,27 @@ import {
   useStoreConfig,
 } from "../config/storeConfig";
 
+type SyncStage =
+  | "loading" // fetching + mapping + diffing (read-only, spinner)
+  | "reviewing" // plan computed, waiting on user choice
+  | "syncing" // user clicked Sync; mutation in progress
+  | "success" // synced, about to auto-close
+  | "canceled" // user clicked Go back
+  | "error";
+
 export default function SyncMode() {
   const { config } = useStoreConfig();
 
   const { canSync, loading: permissionsLoading } = usePermissions();
-  const [status, setStatus] = useState("Syncing products...");
+  const [stage, setStage] = useState<SyncStage>("loading");
+  const [status, setStatus] = useState("Initializing...");
   const [error, setError] = useState<string | null>(null);
-  const hasSyncedRef = useRef(false); // <- Prevents double sync
+  const [plan, setPlan] = useState<SyncPlan | null>(null);
+  const collectionRef = useRef<ManagedCollection | null>(null);
+  // Guards only the initial fetch+diff effect against re-running. The Sync
+  // button itself needs no separate guard: once clicked, stage leaves
+  // "reviewing" and the button unmounts.
+  const hasStartedRef = useRef(false);
 
   framer.showUI({
     width: 500,
@@ -41,61 +64,95 @@ export default function SyncMode() {
     if (!canSync) {
       const msg = "You don't have permission to sync this collection.";
       setError(msg);
-      setStatus("❌ Cannot sync");
+      setStage("error");
       framer.notify(msg, { variant: "error" });
       return;
     }
 
-    if (hasSyncedRef.current) return;
-    hasSyncedRef.current = true;
+    if (hasStartedRef.current) return;
+    hasStartedRef.current = true;
 
-    const syncProducts = async () => {
+    const loadPlan = async () => {
+      setStage("loading");
       setStatus("Initializing...");
 
       // Precondition gate: confirm an active managed collection is actually
       // resolvable before attempting any collection-mutating calls. This can
       // fail if Framer hasn't finished establishing the collection context.
-      let collection;
+      let collection: ManagedCollection;
       try {
         collection = await framer.getActiveManagedCollection();
       } catch (err) {
         console.error("Failed to resolve the active managed collection", err);
         const msg = "Open Anopa from a CMS collection to sync products.";
         setError(msg);
-        setStatus("❌ No active collection");
+        setStage("error");
         framer.notify(msg, { variant: "error" });
         return;
       }
+      collectionRef.current = collection;
 
       try {
-        const syncedCount = await syncProductsCore(
-          config,
-          collection,
-          canSync,
-        );
-
-        setStatus(`✅ Synced ${syncedCount} products`);
-        framer.notify(`✅ Synced ${syncedCount} products`, {
-          variant: "success",
-        });
-
-        setTimeout(() => {
-          framer.closePlugin("Sync complete", { variant: "success" });
-        }, 1500);
+        setStatus("Fetching latest products from Shopify...");
+        const prepared = await prepareProductSync(config, canSync);
+        setStatus("Comparing with your collection...");
+        const computedPlan = await computeSyncPlan(prepared, collection);
+        setPlan(computedPlan);
+        setStage("reviewing");
       } catch (err) {
-        console.error("Product sync failed", err);
+        console.error("Failed to prepare product sync", err);
         const message =
           err instanceof Error
             ? err.message
-            : "Couldn't sync products. Please try again.";
+            : "Couldn't check for updates. Please try again.";
         setError(message);
-        setStatus("❌ Sync failed");
+        setStage("error");
         framer.notify(message, { variant: "error" });
       }
     };
 
-    syncProducts();
+    loadPlan();
   }, [config, canSync, permissionsLoading]);
+
+  const handleSync = async () => {
+    if (!plan || !collectionRef.current) return;
+    setStage("syncing");
+    setStatus("Syncing products...");
+    setError(null);
+    try {
+      const syncedCount = await syncPreparedProductsCore(
+        plan.prepared,
+        collectionRef.current,
+        canSync,
+      );
+
+      setStage("success");
+      setStatus(`✅ Synced ${syncedCount} products`);
+      framer.notify(`✅ Synced ${syncedCount} products`, {
+        variant: "success",
+      });
+
+      setTimeout(() => {
+        framer.closePlugin("Sync complete", { variant: "success" });
+      }, 1500);
+    } catch (err) {
+      console.error("Product sync failed", err);
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Couldn't sync products. Please try again.";
+      setError(message);
+      setStage("error");
+      framer.notify(message, { variant: "error" });
+    }
+  };
+
+  const handleGoBack = () => {
+    setStage("canceled");
+    framer.closePlugin("Sync canceled — no changes were made.", {
+      variant: "info",
+    });
+  };
 
   // No collection operation should run without a connected store — show the
   // form to fix that directly instead of a dead-end error message.
@@ -107,6 +164,95 @@ export default function SyncMode() {
     );
   }
 
+  if (stage === "reviewing" && plan) {
+    const { toAddIds, toUpdateIds, toRemoveIds } = plan;
+    const totalChanges =
+      toAddIds.length + toUpdateIds.length + toRemoveIds.length;
+
+    return (
+      <div className="absolute top-0 left-0 right-0 h-full !w-full flex flex-col p-4">
+        <div className="flex-1 flex flex-col justify-center items-center gap-3 text-center overflow-y-auto scrollbar-hidden">
+          <h4 className="max-w-[310px] text-[28px] font-bold">
+            Review Sync Changes
+          </h4>
+          {totalChanges === 0 ? (
+            <p className="text-[12px] framer-color-text-tertiary">
+              Your collection already matches your Shopify store. Nothing to
+              sync.
+            </p>
+          ) : (
+            <ul className="flex flex-col gap-1 text-[12px] framer-color-text-secondary">
+              {toAddIds.length > 0 && (
+                <li>
+                  {toAddIds.length} new product
+                  {toAddIds.length === 1 ? "" : "s"} will be added
+                </li>
+              )}
+              {toUpdateIds.length > 0 && (
+                <li>
+                  {toUpdateIds.length} product
+                  {toUpdateIds.length === 1 ? "" : "s"} will be updated
+                </li>
+              )}
+              {toRemoveIds.length > 0 ? (
+                <li>
+                  {toRemoveIds.length} product
+                  {toRemoveIds.length === 1 ? "" : "s"} will be removed because
+                  they're no longer in your Shopify store
+                </li>
+              ) : (
+                <li>No products will be removed</li>
+              )}
+            </ul>
+          )}
+        </div>
+
+        <div className="flex !p-5 gap-2 w-full framer-color-bg">
+          <button
+            onClick={handleGoBack}
+            className="flex-1 framer-button-secondary"
+          >
+            Go back
+          </button>
+          <button
+            onClick={() => void handleSync()}
+            className="flex-1 !bg-brand-primary !text-white hover:!bg-brand-primary/80"
+          >
+            Sync
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (stage === "canceled") {
+    return (
+      <div className="absolute top-0 left-0 right-0 h-full !w-full flex items-center justify-center p-4 text-center">
+        <p className="text-[12px] framer-color-text-tertiary">
+          Sync canceled — closing…
+        </p>
+      </div>
+    );
+  }
+
+  if (stage === "error") {
+    return (
+      <div className="absolute top-0 left-0 right-0 h-full !w-full flex items-center justify-center p-4 text-center">
+        <div className="flex flex-col justify-center items-center gap-2">
+          <h4 className="max-w-[310px] text-[32px] font-bold">
+            Sync Not Completed
+          </h4>
+          {error && (
+            <div className="p-2 bg-red-700 rounded text-white text-center text-[12px]">
+              {error}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // stage === "loading" | "syncing" | "success"
   return (
     <div className="absolute top-0 left-0 right-0 h-full !w-full flex items-center justify-center p-4 text-center">
       <div className="flex flex-col justify-center items-center gap-2">
@@ -115,13 +261,10 @@ export default function SyncMode() {
           <p className="text-[10px] framer-color-text-tertiary">{status}</p>
         </div>
         <h4 className="max-w-[310px] text-[32px] font-bold">
-          Your Product is Syncing
+          {stage === "loading"
+            ? "Checking for Updates"
+            : "Your Product is Syncing"}
         </h4>
-        {error && (
-          <div className="p-2 bg-red-700 rounded text-white text-center text-[12px]">
-            {error}
-          </div>
-        )}
       </div>
     </div>
   );
