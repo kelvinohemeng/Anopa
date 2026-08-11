@@ -17,7 +17,13 @@ function PluginController() {
     if (framer.mode !== "canvas") {
       framer.showUI({ width: 480, height: 700, resizable: false });
     }
-  }, [framer.mode]);
+    if (
+      framer.mode === "configureManagedCollection" &&
+      !hasStoreCredentials(config)
+    ) {
+      framer.showUI({ width: 480, height: 400, resizable: false });
+    }
+  }, [framer.mode, config]);
 
   useEffect(() => {
     if (startupRouteSelected.current || framer.mode !== "canvas") return;
