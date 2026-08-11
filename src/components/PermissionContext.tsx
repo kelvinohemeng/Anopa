@@ -31,7 +31,7 @@ interface PermissionsContextType {
 }
 
 const PermissionsContext = createContext<PermissionsContextType | undefined>(
-  undefined
+  undefined,
 );
 
 export function PermissionsProvider({
@@ -48,13 +48,13 @@ export function PermissionsProvider({
       try {
         // Check sync permissions
         const syncPermissionResult = await framer.isAllowedTo(
-          ...SYNC_PERMISSIONS
+          ...SYNC_PERMISSIONS,
         );
         setCanSync(syncPermissionResult);
 
         // Check configure permissions
         const configurePermissionResult = await framer.isAllowedTo(
-          ...CONFIGURE_PERMISSIONS
+          ...CONFIGURE_PERMISSIONS,
         );
         setCanConfigure(configurePermissionResult);
       } catch (error) {

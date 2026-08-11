@@ -29,8 +29,8 @@ export default function HomePage() {
         if (whatsNew?.version && dismissed !== whatsNew.version) {
           navigate("/whats-new");
         }
-      } catch {
-        // ignore
+      } catch (err) {
+        console.warn("Homepage: failed to check for a new What's New post", err);
       }
     })();
   }, [navigate]);

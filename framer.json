@@ -1,7 +1,6 @@
 {
   "id": "a4f0d6",
   "name": "anopa",
-  "permissions": ["framer:read-write-managed-collection"],
   "modes": ["canvas", "configureManagedCollection", "syncManagedCollection"],
   "icon": "/Plugin_Icon.svg"
 }

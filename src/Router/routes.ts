@@ -66,7 +66,7 @@ export const routes: PluginRoute[] = [
   {
     path: "/whats-new",
     Component: WhatsNewPage,
-    size: { width: 350, height: 650 },
+    size: { width: 350, height: 450 },
   },
   {
     path: "/manage",

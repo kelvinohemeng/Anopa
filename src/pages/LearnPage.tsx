@@ -66,7 +66,9 @@ export default function LearnPage() {
           items.map((item) => (
             <button
               key={item._id}
-              onClick={() => window.open(item.url, "_blank")}
+              onClick={() =>
+                window.open(item.url, "_blank", "noopener,noreferrer")
+              }
               className="!p-0 !m-0 !bg-transparent flex flex-col !border-0 text-left w-full overflow-hidden framer-color-bg-secondary hover:brightness-95 transition-all"
             >
               {item.thumbnailUrl && (

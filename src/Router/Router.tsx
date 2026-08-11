@@ -17,6 +17,10 @@ export default function Router() {
         label: "Manage Store",
         onAction: () => navigate("/manage"),
       },
+      {
+        label: "What's New",
+        onAction: () => navigate("/whats-new"),
+      },
     ]);
   }, [navigate]);
 

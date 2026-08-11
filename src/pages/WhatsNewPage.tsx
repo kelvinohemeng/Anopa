@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
-import { framer, useIsAllowedTo } from "framer-plugin";
+import { framer } from "framer-plugin";
 import { client } from "../SanityStuff/sanityClient";
 
 const PLUGIN_DATA_KEY = "whatsNewDismissed";
@@ -30,7 +30,6 @@ async function fetchWhatsNew(): Promise<WhatsNewData | null> {
 }
 
 export default function WhatsNewPage() {
-  const isAllowedToSetPluginData = useIsAllowedTo("setPluginData");
   const [, navigate] = useLocation();
   const [data, setData] = useState<WhatsNewData | null>(null);
   const [currentSlide, setCurrentSlide] = useState(0);
@@ -48,13 +47,19 @@ export default function WhatsNewPage() {
 
     // Dismiss on unmount — covers back button navigation. This just marks the
     // "what's new" banner as seen, so skip silently (no framer.notify) if the
-    // permission isn't available rather than surfacing an error for it.
+    // permission isn't available rather than surfacing an error for it. A
+    // fresh, synchronous check right here (rather than a hook value read
+    // through a closure) confirms live permission state immediately before
+    // the write, since this doesn't drive any UI.
     return () => {
-      if (versionRef.current && isAllowedToSetPluginData) {
-        framer.setPluginData(PLUGIN_DATA_KEY, versionRef.current).catch(() => {});
+      if (versionRef.current && framer.isAllowedTo("setPluginData")) {
+        framer
+          .setPluginData(PLUGIN_DATA_KEY, versionRef.current)
+          .catch((err) =>
+            console.error("[WhatsNewPage] Failed to save dismissal", err),
+          );
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- fire-once-on-mount effect; permission is re-read via closure, not re-triggering the fetch above (see comment)
   }, []);
 
   const prev = () =>

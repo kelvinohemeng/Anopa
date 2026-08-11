@@ -115,11 +115,14 @@ export default function TemplatesPage() {
             try {
               image = urlFor(doc.mainImage).width(1200).url();
             } catch (err) {
-              console.warn("[TemplatesPage] urlFor failed", err);
-              image = "";
+              console.warn(
+                `[TemplatesPage] Failed to build Sanity image URL for "${doc.title || doc._id}"`,
+                err,
+              );
+              image = "/templates/placeholder.svg";
             }
           } else {
-            image = "/templates/placeholder.png";
+            image = "/templates/placeholder.svg";
           }
 
           // pick primary category title (projected from GROQ)
@@ -263,7 +266,8 @@ export default function TemplatesPage() {
               <div className="flex gap-2 !mt-2">
                 <button
                   onClick={() =>
-                    t.previewUrl && window.open(t.previewUrl, "_blank")
+                    t.previewUrl &&
+                    window.open(t.previewUrl, "_blank", "noopener,noreferrer")
                   }
                   className="flex-1 px-3 py-1.5 text-xs !bg-gray-100 hover:!bg-gray-200 !text-gray-600 !border !border-gray-200"
                 >
@@ -272,7 +276,12 @@ export default function TemplatesPage() {
 
                 <button
                   onClick={() =>
-                    t.templateUrl && window.open(t.templateUrl, "_blank")
+                    t.templateUrl &&
+                    window.open(
+                      t.templateUrl,
+                      "_blank",
+                      "noopener,noreferrer",
+                    )
                   }
                   className={`flex-1  !px-2 framer-color-text-primary  framer-button-secondary hover:!bg-brand-primary/80 !h-fit hover:!text-white`}
                 >

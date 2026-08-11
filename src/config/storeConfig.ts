@@ -173,7 +173,8 @@ export function readStoreConfig(): StoreConfig | null {
     if (!raw) return null;
     const parsed: unknown = JSON.parse(raw);
     return isStoreConfig(parsed) ? parsed : null;
-  } catch {
+  } catch (err) {
+    console.warn("readStoreConfig: saved store configuration is corrupted", err);
     return null;
   }
 }

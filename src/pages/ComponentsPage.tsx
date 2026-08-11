@@ -26,6 +26,7 @@ interface UIComponent {
   description?: string;
   url: string;
   image: string;
+  dragPreviewImage: string;
   category: string;
   published: boolean;
   status?: "none" | "new" | "deprecated";
@@ -102,16 +103,35 @@ export default function ComponentsPage() {
           const framerUrl = doc.componentUrl || "";
 
           let image = "";
+          let dragPreviewImage = "";
           if (doc.mainImage) {
             try {
               image = urlFor(doc.mainImage).width(800).url();
-            } catch {
-              image = "";
+              // Dedicated, lightweight thumbnail for the drag-preview ghost —
+              // the grid image above is full quality for display, but the
+              // drag preview only needs to be small and fast to load.
+              dragPreviewImage = urlFor(doc.mainImage)
+                .width(160)
+                .quality(60)
+                .fit("max")
+                .auto("format")
+                .url();
+            } catch (err) {
+              console.warn(
+                `[ComponentsPage] Failed to build Sanity image URL for "${doc.title || doc._id}"`,
+                err,
+              );
+              image = "/components/placeholder.svg";
+              dragPreviewImage = "/components/placeholder.svg";
             }
           } else if (doc.imageUrl) {
+            // External URL — can't be resized via Sanity's CDN, so reuse it
+            // for both; this is an existing, accepted limitation.
             image = doc.imageUrl;
+            dragPreviewImage = doc.imageUrl;
           } else {
-            image = "/components/placeholder.png";
+            image = "/components/placeholder.svg";
+            dragPreviewImage = "/components/placeholder.svg";
           }
 
           const category =
@@ -131,6 +151,7 @@ export default function ComponentsPage() {
             description: doc.description,
             url: framerUrl,
             image,
+            dragPreviewImage,
             category,
             published,
             status: doc.status || "none",
@@ -263,6 +284,7 @@ export default function ComponentsPage() {
             key={component.key}
             url={component.url}
             image={component.image}
+            dragPreviewImage={component.dragPreviewImage}
             componentKey={component.key}
             title={component.title}
             published={component.published}
@@ -284,6 +306,7 @@ export default function ComponentsPage() {
 interface Props {
   url: string;
   image: string;
+  dragPreviewImage: string;
   attributes?: Record<string, unknown>;
   componentKey?: string;
   published?: boolean;
@@ -295,6 +318,7 @@ interface Props {
 export const ComponentInsert = ({
   url,
   image,
+  dragPreviewImage,
   attributes,
   componentKey,
   published,
@@ -341,7 +365,8 @@ export const ComponentInsert = ({
       } else {
         framer.notify(`${title} added`, { variant: "success" });
       }
-    } catch {
+    } catch (err) {
+      console.error(`[ComponentsPage] Failed to add "${title}"`, err);
       framer.notify(`Could not add ${title}. Please try again.`, { variant: "error" });
     }
   };
@@ -386,7 +411,7 @@ export const ComponentInsert = ({
           <Draggable
             data={{
               type: "componentInstance",
-              previewImage: image,
+              previewImage: dragPreviewImage,
               url,
               attributes: { controls: finalAttributes },
             }}
