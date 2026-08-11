@@ -5,6 +5,7 @@ import {
 } from "framer-plugin";
 import React, { useEffect, useState } from "react";
 import { usePermissions } from "../components/PermissionContext";
+import StoreDetailsForm from "../pages/StoreDetailsForm";
 import {
   hasStoreCredentials,
   type StoreConfig,
@@ -829,6 +830,10 @@ export default function ConfigurationMode() {
         );
       } catch (error) {
         console.error("Failed to fetch collections:", error);
+        framer.notify(
+          "Couldn't load this project's collections. Collection-reference fields won't have options to pick from.",
+          { variant: "warning" },
+        );
       }
     };
 
@@ -946,12 +951,24 @@ export default function ConfigurationMode() {
       framer.notify(message, { variant: "warning" });
       return;
     }
+
+    // Precondition gate: confirm an active managed collection is actually
+    // resolvable before doing any field-building or collection-mutating work.
+    let collection;
+    try {
+      collection = await framer.getActiveManagedCollection();
+    } catch (error) {
+      console.error("Failed to resolve the active managed collection", error);
+      const message = "Open Anopa from a CMS collection to configure and sync.";
+      setSyncError(message);
+      framer.notify(message, { variant: "error" });
+      return;
+    }
+
     setSyncStatus("Creating collection...");
     setSyncing(true);
 
     try {
-      const collection = await framer.getActiveManagedCollection();
-
       const syncedFields: ManagedCollectionFieldInput[] = standardFields
         .filter((f) => selectedFields.includes(f.id))
         .flatMap((f) => {
@@ -1085,12 +1102,14 @@ export default function ConfigurationMode() {
       framer.closePlugin("Sync complete", { variant: "success" });
     } catch (error: unknown) {
       console.error("[Sync] FAILED at step — error:", error);
-      setSyncError(
-        error instanceof Error ? error.message : "Failed to create collection.",
-      );
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Couldn't create the collection. Please try again.";
+      setSyncError(message);
       setSyncStatus(null);
       try {
-        framer.notify("❌ Failed to create collection.", { variant: "error" });
+        framer.notify(message, { variant: "error" });
       } catch {
         // Framer connection may be gone — swallow
       }
@@ -1100,6 +1119,27 @@ export default function ConfigurationMode() {
   };
 
   const handleReset = async () => {
+    if (!canConfigure) {
+      framer.notify(
+        "You don't have permission to reset settings for this collection.",
+        { variant: "error" },
+      );
+      return;
+    }
+
+    // Precondition gate: confirm an active managed collection is
+    // resolvable before touching its plugin data.
+    try {
+      await framer.getActiveManagedCollection();
+    } catch (error) {
+      console.error("Failed to resolve the active managed collection", error);
+      framer.notify(
+        "Open Anopa from a CMS collection to reset its settings.",
+        { variant: "error" },
+      );
+      return;
+    }
+
     try {
       await framer.setPluginData("selectedFields", null);
       updateStoreConfig({
@@ -1115,7 +1155,9 @@ export default function ConfigurationMode() {
       setSyncImageAsGallery(false);
     } catch (e) {
       console.error("Failed to reset plugin data", e);
-      framer.notify("❌ Failed to reset settings.", { variant: "error" });
+      framer.notify("Couldn't reset settings. Please try again.", {
+        variant: "error",
+      });
     }
   };
 
@@ -1129,7 +1171,20 @@ export default function ConfigurationMode() {
 
   useEffect(() => {
     async function loadSettings() {
-      if (!canConfigure) return;
+      // Precondition gate: confirm an active managed collection is
+      // resolvable before reading its plugin data. This intentionally
+      // doesn't check canConfigure — viewing the currently saved settings
+      // shouldn't require write permission, only the mutating actions do.
+      try {
+        await framer.getActiveManagedCollection();
+      } catch (e) {
+        console.error("Failed to resolve the active managed collection", e);
+        framer.notify(
+          "Open Anopa from a CMS collection to load its saved field settings.",
+          { variant: "error" },
+        );
+        return;
+      }
 
       try {
         const selected = await framer.getPluginData("selectedFields");
@@ -1141,31 +1196,19 @@ export default function ConfigurationMode() {
 
         if (selected) {
           const parsed = JSON.parse(selected);
-          // console.log("🔁 Loaded Selected Standard Fields:", parsed);
           setSelectedFields(parsed);
         }
-
       } catch (e) {
         console.error("❌ Failed to load plugin settings", e);
+        framer.notify(
+          "Couldn't load saved field settings. Showing defaults instead.",
+          { variant: "warning" },
+        );
       }
     }
 
-    const waitForFramerReady = async () => {
-      try {
-        let tries = 0;
-        while (!framer.getActiveManagedCollection && tries < 10) {
-          await new Promise((r) => setTimeout(r, 100));
-          tries++;
-        }
-
-        await loadSettings();
-      } catch (e) {
-        console.error("❌ Plugin never initialized", e);
-      }
-    };
-
-    waitForFramerReady();
-  }, [canConfigure, config]);
+    loadSettings();
+  }, [config]);
 
   return (
     <div className=" h-[100%] !w-full ">
@@ -1191,7 +1234,11 @@ export default function ConfigurationMode() {
             </div>
           )}
         </div>
-      ) : showUI ? (
+      ) : showUI ? !hasStoreCredentials(config) ? (
+        <div className="!h-full !p-4 overflow-y-auto scrollbar-hidden">
+          <StoreDetailsForm embedded />
+        </div>
+      ) : (
         <div className="!h-full !p-4 flex flex-col gap-3">
           {/* Header */}
           <div className="flex flex-col gap-2 flex-shrink-0">

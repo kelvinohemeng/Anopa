@@ -1,11 +1,9 @@
 import { framer, ManagedCollectionItemInput } from "framer-plugin";
 import { useEffect, useRef, useState } from "react";
 import { ShopifyProduct } from "../utils/types";
-import {
-  SYNC_PERMISSIONS,
-  usePermissions,
-} from "../components/PermissionContext";
+import { usePermissions } from "../components/PermissionContext";
 import { syncProductsCore } from "../utils/syncProducts";
+import StoreDetailsForm from "../pages/StoreDetailsForm";
 import {
   hasStoreCredentials,
   type StoreConfig,
@@ -33,20 +31,18 @@ export default function SyncMode() {
     }
 
     if (!hasStoreCredentials(config)) {
-      setError(
-        "Set up your Shopify domain and public Storefront API token in Manage before syncing.",
-      );
+      // Handled by rendering StoreDetailsForm below instead of attempting
+      // to sync — no collection-mutating call should run without a store
+      // connected.
       setStatus("Shopify setup required");
-      framer.notify(
-        "Shopify setup required. Open Manage to add your store details.",
-        { variant: "warning" },
-      );
       return;
     }
 
     if (!canSync) {
-      setError("❌ Missing permissions");
-      setStatus("❌ Cannot sync: Insufficient permissions.");
+      const msg = "You don't have permission to sync this collection.";
+      setError(msg);
+      setStatus("❌ Cannot sync");
+      framer.notify(msg, { variant: "error" });
       return;
     }
 
@@ -56,17 +52,22 @@ export default function SyncMode() {
     const syncProducts = async () => {
       setStatus("Initializing...");
 
+      // Precondition gate: confirm an active managed collection is actually
+      // resolvable before attempting any collection-mutating calls. This can
+      // fail if Framer hasn't finished establishing the collection context.
+      let collection;
       try {
-        const collection = await framer.getActiveManagedCollection();
+        collection = await framer.getActiveManagedCollection();
+      } catch (err) {
+        console.error("Failed to resolve the active managed collection", err);
+        const msg = "Open Anopa from a CMS collection to sync products.";
+        setError(msg);
+        setStatus("❌ No active collection");
+        framer.notify(msg, { variant: "error" });
+        return;
+      }
 
-        if (!canSync) {
-          const msg = `Missing permissions: ${SYNC_PERMISSIONS.join(", ")}`;
-          setError(msg);
-          setStatus("❌ " + msg);
-          framer.notify("❌ Missing permissions");
-          return;
-        }
-
+      try {
         const syncedCount = await syncProductsCore(
           config,
           collection,
@@ -74,21 +75,37 @@ export default function SyncMode() {
         );
 
         setStatus(`✅ Synced ${syncedCount} products`);
-        framer.notify("✅ Products synced");
+        framer.notify(`✅ Synced ${syncedCount} products`, {
+          variant: "success",
+        });
 
         setTimeout(() => {
           framer.closePlugin("Sync complete", { variant: "success" });
         }, 1500);
       } catch (err) {
-        console.error("Product sync failed");
-        setError(err instanceof Error ? err.message : String(err));
+        console.error("Product sync failed", err);
+        const message =
+          err instanceof Error
+            ? err.message
+            : "Couldn't sync products. Please try again.";
+        setError(message);
         setStatus("❌ Sync failed");
-        framer.notify("❌ Sync error");
+        framer.notify(message, { variant: "error" });
       }
     };
 
     syncProducts();
   }, [config, canSync, permissionsLoading]);
+
+  // No collection operation should run without a connected store — show the
+  // form to fix that directly instead of a dead-end error message.
+  if (!permissionsLoading && !hasStoreCredentials(config)) {
+    return (
+      <div className="absolute top-0 left-0 right-0 h-full !w-full !p-4 overflow-y-auto scrollbar-hidden">
+        <StoreDetailsForm embedded />
+      </div>
+    );
+  }
 
   return (
     <div className="absolute top-0 left-0 right-0 h-full !w-full flex items-center justify-center p-4 text-center">

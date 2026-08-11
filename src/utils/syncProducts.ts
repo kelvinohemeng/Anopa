@@ -251,7 +251,14 @@ export async function syncPreparedProductsCore(
     const mappedWithoutImages = mapped.map(withoutImageFields);
 
     if (mappedWithoutImages.length > 0) {
-      await collection.addItems(mappedWithoutImages);
+      try {
+        await collection.addItems(mappedWithoutImages);
+      } catch (retryError) {
+        console.error("[Sync] Retry without images also failed", retryError);
+        throw new Error(
+          "Couldn't add products to the collection. Check your connection and try again.",
+        );
+      }
     }
     framer.notify(
       "⚠️ Products synced, but images couldn't be uploaded. Re-sync to retry images.",
@@ -261,13 +268,28 @@ export async function syncPreparedProductsCore(
 
   const targetIds = new Set(mapped.map((item) => item.id));
   const staleIds = existingIds.filter((id) => !targetIds.has(id));
-  if (staleIds.length > 0) await collection.removeItems(staleIds);
+  if (staleIds.length > 0) {
+    try {
+      await collection.removeItems(staleIds);
+    } catch (removeError) {
+      console.error("[Sync] Failed to remove stale items", removeError);
+      throw new Error(
+        "Products synced, but couldn't remove items no longer in your Shopify store. Re-sync to retry.",
+      );
+    }
+  }
 
-  await collection.setPluginData(
-    "lastSynchronizedAt",
-    new Date().toISOString()
-  );
-  await collection.setPluginData("totalProducts", String(mapped.length));
+  try {
+    await collection.setPluginData(
+      "lastSynchronizedAt",
+      new Date().toISOString()
+    );
+    await collection.setPluginData("totalProducts", String(mapped.length));
+  } catch (metaError) {
+    // Non-critical bookkeeping — the products themselves already synced
+    // successfully above, so don't fail the whole sync over this.
+    console.error("[Sync] Failed to save sync metadata", metaError);
+  }
 
   return mapped.length;
 }
@@ -343,12 +365,24 @@ export async function configureCollectionAndSync(
         persistenceRestoreError,
       );
     }
-    throw error;
+    console.error("Failed to stage collection fields", error);
+    throw new Error(
+      "Couldn't update the collection's fields. No changes were made — please try again.",
+    );
   }
 
   // On item/metadata failure the union schema remains intact. Only a fully
   // successful sync is allowed to prune fields that are no longer desired.
   const syncedCount = await deps.sync(prepared, collection, canSync);
-  await collection.setFields(allFields);
+  try {
+    await collection.setFields(allFields);
+  } catch (error) {
+    // Products already synced successfully by this point — don't let a
+    // failure here be mistaken for the whole operation having failed.
+    console.error("Failed to finalize collection fields after sync", error);
+    throw new Error(
+      `Synced ${syncedCount} products, but couldn't finish updating the collection's field configuration. Your products are safe — try Configure again to retry.`,
+    );
+  }
   return syncedCount;
 }

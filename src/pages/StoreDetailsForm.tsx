@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { BackButton } from "../components/BackButton";
 import {
+  ANOPA_CONFIG_COMPONENT_URL,
   clearStoreConfig,
   hasStoreCredentials,
   isAnopaConfigComponent,
@@ -12,7 +13,21 @@ import {
   useStoreConfig,
 } from "../config/storeConfig";
 
-export default function StoreDetailsForm() {
+interface StoreDetailsFormProps {
+  /**
+   * True when rendered inline inside a managed-collection mode (Sync or
+   * Configure) because store credentials are missing, rather than as the
+   * standalone Manage page reached via canvas navigation. Hides navigation
+   * and the canvas-insertion action, since neither applies in that context
+   * — those modes don't have a canvas insertion point or a page to go back
+   * to.
+   */
+  embedded?: boolean;
+}
+
+export default function StoreDetailsForm({
+  embedded = false,
+}: StoreDetailsFormProps) {
   const [, navigate] = useLocation();
   const { config, refresh } = useStoreConfig();
 
@@ -23,6 +38,7 @@ export default function StoreDetailsForm() {
   const [syncing, setSyncing] = useState(false);
   const [configOnCanvas, setConfigOnCanvas] = useState<boolean | null>(null);
   const isAllowedToSetAttributes = useIsAllowedTo("setAttributes");
+  const isAllowedToAddComponent = useIsAllowedTo("addComponentInstance");
 
   useEffect(() => {
     framer
@@ -39,6 +55,48 @@ export default function StoreDetailsForm() {
     setStoreToken(config?.publicStorefrontToken ?? "");
   }, [config]);
 
+  const handleAddConfig = async () => {
+    if (!isAllowedToAddComponent) {
+      framer.notify(
+        "You don't have permission to add components to this project.",
+        { variant: "error" },
+      );
+      return;
+    }
+    setSyncing(true);
+    try {
+      await framer.addComponentInstance({
+        url: ANOPA_CONFIG_COMPONENT_URL,
+        attributes: {
+          controls: {
+            domain: config?.domain ?? "",
+            token: config?.publicStorefrontToken ?? "",
+            // Every user has full access — no premium tier to gate on.
+            premiumStatus: true,
+          },
+        },
+      });
+      setConfigOnCanvas(true);
+      if (hasStoreCredentials(config)) {
+        framer.notify("Anopa Config added to the canvas", {
+          variant: "success",
+        });
+      } else {
+        framer.notify(
+          "Anopa Config added. Save your Shopify store details above, then click Update Anopa Config to sync them.",
+          { variant: "warning" },
+        );
+      }
+    } catch (err: unknown) {
+      console.error("[AddConfig]", err);
+      framer.notify("Could not add Anopa Config. Please try again.", {
+        variant: "error",
+      });
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const handleSyncConfig = async () => {
     if (!hasStoreCredentials(config)) {
       framer.notify(
@@ -47,16 +105,24 @@ export default function StoreDetailsForm() {
       );
       return;
     }
-    if (!isAllowedToSetAttributes) return;
+    if (!isAllowedToSetAttributes) {
+      framer.notify(
+        "You don't have permission to update components in this project.",
+        { variant: "error" },
+      );
+      return;
+    }
     setSyncing(true);
     try {
       const nodes = await framer.getNodesWithType("ComponentInstanceNode");
       const targets = nodes.filter(isAnopaConfigComponent);
 
       if (targets.length === 0) {
-        framer.notify("No Shopify Config component found on canvas.", {
-          variant: "error",
-        });
+        setConfigOnCanvas(false);
+        framer.notify(
+          "Anopa Config isn't on the canvas anymore. Click Add Anopa Config to place it again.",
+          { variant: "error" },
+        );
         return;
       }
 
@@ -175,13 +241,15 @@ export default function StoreDetailsForm() {
 
   const onManualSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    handleSave(true);
+    // Embedded (Sync/Configure) has no "/" page to navigate back to — the
+    // mode swaps back to its normal view on its own once config updates.
+    handleSave(!embedded);
   };
 
   return (
     <div className="!space-y-3">
-      <BackButton />
-      <hr />
+      {!embedded && <BackButton />}
+      {!embedded && <hr />}
       <div className=" flex flex-col gap-6 space-y-3">
         <div className="!space-y-4">
           {hasStoreCredentials(config) ? (
@@ -200,8 +268,9 @@ export default function StoreDetailsForm() {
             <div className="flex flex-col gap-1">
               <h2 className="text-md font-bold">Connect Shopify</h2>
               <p className="text-xs text-gray-500">
-                Enter your public Storefront API details below. They stay in
-                this plugin's local iframe storage.
+                {embedded
+                  ? "Connect your Shopify store to continue."
+                  : "Enter your public Storefront API details below. They stay in this plugin's local iframe storage."}
               </p>
             </div>
           )}
@@ -252,19 +321,41 @@ export default function StoreDetailsForm() {
                   ? "Update Store Info"
                   : "Save Store Info"}
             </button>
-            <button
-              type="button"
-              onClick={handleSyncConfig}
-              disabled={syncing || loading || configOnCanvas === false}
-              className="framer-color-text-primary framer-button-secondary !h-fit disabled:opacity-50"
-            >
-              {syncing ? "Syncing…" : "Update Anopa Config"}
-            </button>
-            {configOnCanvas === false && (
-              <p className="text-[10px] text-amber-500">
-                Anopa Config component not found on canvas. Add it from the
-                Components page first.
-              </p>
+            {!embedded && (
+              <button
+                type="button"
+                onClick={configOnCanvas ? handleSyncConfig : handleAddConfig}
+                disabled={
+                  syncing ||
+                  loading ||
+                  configOnCanvas === null ||
+                  (configOnCanvas
+                    ? !isAllowedToSetAttributes
+                    : !isAllowedToAddComponent)
+                }
+                title={
+                  configOnCanvas === null
+                    ? "Checking canvas…"
+                    : configOnCanvas
+                      ? !isAllowedToSetAttributes
+                        ? "You don't have permission to update components in this project."
+                        : undefined
+                      : !isAllowedToAddComponent
+                        ? "You don't have permission to add components to this project."
+                        : undefined
+                }
+                className="!bg-brand-primary !text-white hover:!bg-brand-primary/80 !h-fit disabled:opacity-50"
+              >
+                {configOnCanvas === null
+                  ? "Checking canvas…"
+                  : syncing
+                    ? configOnCanvas
+                      ? "Updating…"
+                      : "Adding…"
+                    : configOnCanvas
+                      ? "Update Anopa Config"
+                      : "Add Anopa Config"}
+              </button>
             )}
             <button
               type="button"
