@@ -12,6 +12,9 @@ export default function Router() {
   const [, navigate] = useLocation();
 
   useEffect(() => {
+    // Configure mode is a constrained, single-purpose context — no menu.
+    if (framer.mode === "configureManagedCollection") return;
+
     framer.setMenu([
       {
         label: "Manage Store",
