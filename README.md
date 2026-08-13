@@ -7,7 +7,7 @@ components without creating or signing in to an Anopa account.
 - **Install from the Framer Marketplace:** https://www.framer.com/community/marketplace/plugins/anopa/
 - **Documentation:** https://docs.thegeneralyst.com
 - **Video overview:** https://www.youtube.com/watch?v=Ug3CrpsolQ0
-- **Client license:** [PolyForm Shield 1.0.0](LICENSE) — source-available, not for competing products
+- **Client license:** [PolyForm Shield 1.0.0](LICENSE) - free and source-available, not open source, and not for competing products
 
 ## What Anopa does
 
@@ -25,10 +25,11 @@ mode, an unconfigured installation goes directly to **Manage**.
 ## Licensing boundary
 
 The client code in this repository is licensed under the [PolyForm Shield
-License 1.0.0](LICENSE). It's source-available: you can read it, run it,
-fork it, and build on it for any purpose that doesn't compete with Anopa or
-another product built on this code. It covers the plugin panel, Shopify sync
-logic, catalogue UI, and local configuration workflow in this repository.
+License 1.0.0](LICENSE). Anopa is free and source-available, but it is not
+open source. You can read it, run it, fork it, and build on it for any purpose
+that doesn't compete with Anopa or another product built on this code. It
+covers the plugin panel, Shopify sync logic, catalogue UI, and local
+configuration workflow in this repository.
 
 The published Framer commerce components inserted by the plugin are external
 assets whose implementation source lives in a separate Framer project. They
@@ -125,9 +126,11 @@ Run these checks in Framer Desktop, not only in a standalone browser tab:
   build, and confirm the user is clearly prompted to re-enter store details.
   Also rehearse restoring the old build together with its backend.
 
-## Contributing
+## Source availability
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+Anopa is currently maintained as a solo project and is not accepting external
+code contributions or pull requests. Issues, bug reports, and thoughtful
+feedback are still welcome.
 
 ## License
 
